@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { Mail, Lock } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext.jsx";
 
 import bgPosBloc from "../../assets/bg-pos-bloc-medan.jpg";
@@ -11,21 +12,31 @@ import pejabatWalikota from "../../assets/pejabat-walikota-wawalikota.png";
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login } = useAuth();
-  const [username, setUsername] = useState("");
+  const { login, user } = useAuth();
+  const [nip, setNip] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  // Navigate only after the AuthContext user state has actually committed —
+  // calling navigate() right after login() can race the context update and
+  // bounce ProtectedRoute back here with a still-stale (null) user.
+  useEffect(() => {
+    if (user) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [user, navigate]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Mock authentication: role is derived from the username since there's no
-    // backend yet. Type a username containing "admin" to test the admin role,
-    // anything else logs in as "staf" — useful for exercising the RBAC routes.
-    const trimmed = username.trim() || "Pengguna";
-    const role = trimmed.toLowerCase().includes("admin") ? "admin" : "staf";
-    const name = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-    login({ name, role });
-    navigate("/dashboard", { replace: true });
+    setIsSubmitting(true);
+    try {
+      await login(nip, password);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -65,12 +76,12 @@ export default function Login() {
           <div className="w-full max-w-md mx-auto lg:mx-0">
             <div className="backdrop-blur-md bg-white/20 border border-white/30 shadow-2xl rounded-2xl p-8 text-white">
               <h1 className="text-2xl font-bold">Masuk ke Sistem</h1>
-              <p className="text-white/80 text-sm mt-1 mb-6">Masukkan username dan password Anda</p>
+              <p className="text-white/80 text-sm mt-1 mb-6">Masukkan NIP dan password Anda</p>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Username */}
+                {/* NIP */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-white/90">Username</label>
+                  <label className="text-xs font-semibold text-white/90">NIP</label>
                   <div className="relative">
                     <Mail
                       className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -78,9 +89,9 @@ export default function Login() {
                     />
                     <input
                       type="text"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      placeholder="cth: admin atau staf"
+                      value={nip}
+                      onChange={(e) => setNip(e.target.value.trim())}
+                      placeholder="Masukkan NIP"
                       className="w-full bg-white text-slate-800 placeholder-slate-400 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                     />
                   </div>
@@ -118,9 +129,10 @@ export default function Login() {
                 {/* Submit */}
                 <button
                   type="submit"
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-colors shadow-md"
+                  disabled={isSubmitting}
+                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors shadow-md"
                 >
-                  Masuk
+                  {isSubmitting ? "Memproses..." : "Masuk"}
                 </button>
               </form>
             </div>

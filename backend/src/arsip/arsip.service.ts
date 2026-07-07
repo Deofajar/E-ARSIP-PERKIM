@@ -1,0 +1,55 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateArsipDto } from './dto/create-arsip.dto';
+
+@Injectable()
+export class ArsipService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async create(dto: CreateArsipDto, file: Express.Multer.File, uploaderId: string) {
+    return this.prisma.archive.create({
+      data: {
+        nomorSurat: dto.nomorSurat,
+        perihal: dto.perihal,
+        kategori: dto.kategori,
+        tanggalSurat: new Date(dto.tanggalSurat),
+        fileUrl: `/uploads/${file.filename}`,
+        storageLocation: dto.storageLocation ?? '-',
+        uploaderId,
+      },
+      include: { uploader: { select: { namaLengkap: true } } },
+    });
+  }
+
+  async findAll(search?: string) {
+    const where: Prisma.ArchiveWhereInput | undefined = search
+      ? {
+          OR: [
+            { nomorSurat: { contains: search, mode: 'insensitive' } },
+            { perihal: { contains: search, mode: 'insensitive' } },
+            { kategori: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : undefined;
+
+    return this.prisma.archive.findMany({
+      where,
+      include: { uploader: { select: { namaLengkap: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findOne(id: string) {
+    const archive = await this.prisma.archive.findUnique({
+      where: { id },
+      include: { uploader: { select: { namaLengkap: true } } },
+    });
+
+    if (!archive) {
+      throw new NotFoundException('Dokumen tidak ditemukan');
+    }
+
+    return archive;
+  }
+}

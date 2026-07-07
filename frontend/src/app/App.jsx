@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Routes, Route, useLocation, useNavigate, useParams } from "react-router";
+import { toast } from "sonner";
 import Login from "./pages/Login.jsx";
-import { useAuth } from "./context/AuthContext.jsx";
+import { useAuth, API_BASE_URL, TOKEN_KEY } from "./context/AuthContext.jsx";
 import { ProtectedRoute } from "./components/ProtectedRoute.jsx";
 import logoPemkotMedan from "../assets/logo-pemkot-medan.png";
 import logoBerakhlak from "../assets/logo-berakhlak.png";
@@ -71,32 +72,29 @@ function getPageLabel(pathname) {
   return "";
 }
 
-const ARCHIVE_DATA = [
-  { year: "2018", total: 342 },
-  { year: "2019", total: 518 },
-  { year: "2020", total: 487 },
-  { year: "2021", total: 631 },
-  { year: "2022", total: 724 },
-  { year: "2023", total: 896 },
-  { year: "2024", total: 1043 },
-];
+function authFetch(path, options = {}) {
+  const token = localStorage.getItem(TOKEN_KEY);
+  return fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  });
+}
 
-const DOCUMENTS = [
-  { id: "SRT-2024-0891", perihal: "Permohonan Izin Operasional Gedung Baru", jenis: "Surat Masuk", tahun: 2024, tanggal: "12 Mar 2024", uploader: "Rizky Pratama", prioritas: "Tinggi", kategori: "Perizinan" },
-  { id: "SRT-2024-0756", perihal: "Laporan Keuangan Triwulan I 2024", jenis: "Surat Keluar", tahun: 2024, tanggal: "05 Mar 2024", uploader: "Siti Rahayu", prioritas: "Normal", kategori: "Keuangan" },
-  { id: "SRT-2023-1204", perihal: "Undangan Rapat Koordinasi Dinas", jenis: "Surat Masuk", tahun: 2023, tanggal: "28 Nov 2023", uploader: "Ahmad Fauzi", prioritas: "Normal", kategori: "Umum" },
-  { id: "SRT-2023-1089", perihal: "Keputusan Penetapan Pemenang Tender", jenis: "SK Internal", tahun: 2023, tanggal: "15 Nov 2023", uploader: "Dewi Lestari", prioritas: "Rahasia", kategori: "Pengadaan" },
-  { id: "SRT-2023-0934", perihal: "Permohonan Kenaikan Pangkat PNS", jenis: "Surat Masuk", tahun: 2023, tanggal: "03 Sep 2023", uploader: "Rizky Pratama", prioritas: "Normal", kategori: "Kepegawaian" },
-  { id: "SRT-2022-1567", perihal: "Berita Acara Serah Terima Aset Daerah", jenis: "SK Internal", tahun: 2022, tanggal: "20 Des 2022", uploader: "Siti Rahayu", prioritas: "Tinggi", kategori: "Aset" },
-  { id: "SRT-2022-1341", perihal: "Memo Internal Efisiensi Anggaran 2022", jenis: "Memo", tahun: 2022, tanggal: "18 Okt 2022", uploader: "Ahmad Fauzi", prioritas: "Normal", kategori: "Keuangan" },
-  { id: "SRT-2021-0892", perihal: "Surat Tugas Tim Audit Eksternal", jenis: "Surat Keluar", tahun: 2021, tanggal: "07 Jun 2021", uploader: "Dewi Lestari", prioritas: "Tinggi", kategori: "Audit" },
-];
+async function parseErrorMessage(response, fallback) {
+  const body = await response.json().catch(() => null);
+  const serverMessage = Array.isArray(body?.message) ? body.message[0] : body?.message;
+  return serverMessage || fallback;
+}
 
-const PRIORITY_COLORS = {
-  "Tinggi": "bg-amber-100 text-amber-700 border-amber-200",
-  "Normal": "bg-green-100 text-green-700 border-green-200",
-  "Rahasia": "bg-red-100 text-red-700 border-red-200",
-};
+function formatTanggal(dateStr) {
+  if (!dateStr) return "-";
+  return new Date(dateStr).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+const FILE_BASE_URL = API_BASE_URL.replace(/\/api\/v1$/, "");
 
 export default function App() {
   return (
@@ -299,7 +297,7 @@ function AppShell({ children }) {
               <User style={{ width: 14, height: 14, color: "#93c5fd" }} />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-slate-200 text-xs font-medium truncate">{user?.name ?? "Pengguna"}</div>
+              <div className="text-slate-200 text-xs font-medium truncate">{user?.namaLengkap ?? "Memuat..."}</div>
               <div className="text-slate-500 text-[10px]">{roleLabel}</div>
             </div>
             <button
@@ -334,7 +332,7 @@ function AppShell({ children }) {
               <div className="w-7 h-7 rounded-full bg-[#1a56db]/10 flex items-center justify-center">
                 <User style={{ width: 13, height: 13, color: "#1a56db" }} />
               </div>
-              <span className="text-slate-700 text-sm font-medium">{user?.name ?? "Pengguna"}</span>
+              <span className="text-slate-700 text-sm font-medium">{user?.namaLengkap ?? "Memuat..."}</span>
               <ChevronDown style={{ width: 13, height: 13, color: "#94a3b8" }} />
             </div>
           </div>
@@ -355,15 +353,51 @@ function AppShell({ children }) {
 function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const total = ARCHIVE_DATA.reduce((s, d) => s + d.total, 0);
+  const [archives, setArchives] = useState([]);
+
+  useEffect(() => {
+    authFetch("/arsip")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Gagal memuat data arsip"))))
+      .then((data) => setArchives(data))
+      .catch((error) => toast.error(error.message));
+  }, []);
+
+  const recentDocs = archives.slice(0, 5);
+  const total = archives.length;
+
+  const now = new Date();
+  const uploadBulanIni = archives.filter((d) => {
+    const created = new Date(d.createdAt);
+    return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
+  }).length;
+
+  const kontributorAktif = new Set(archives.map((d) => d.uploaderId)).size;
+
+  const kategoriCounts = archives.reduce((acc, d) => {
+    acc[d.kategori] = (acc[d.kategori] ?? 0) + 1;
+    return acc;
+  }, {});
+  const kategoriTerbanyak = Object.entries(kategoriCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "-";
+
+  const volumePerTahun = Object.entries(
+    archives.reduce((acc, d) => {
+      const year = new Date(d.tanggalSurat).getFullYear();
+      acc[year] = (acc[year] ?? 0) + 1;
+      return acc;
+    }, {})
+  )
+    .map(([year, total]) => ({ year, total }))
+    .sort((a, b) => a.year - b.year);
 
   return (
     <div className="p-7 space-y-6">
       {/* Welcome row */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-xl font-bold text-[#0f1c2e]">Selamat Pagi, {user?.name ?? "Pengguna"} 👋</h2>
-          <p className="text-slate-500 text-sm mt-0.5">Minggu, 06 Juli 2025 · Sistem berjalan normal</p>
+          <h2 className="text-xl font-bold text-[#0f1c2e]">Selamat Pagi, {user?.namaLengkap ?? "Memuat..."} 👋</h2>
+          <p className="text-slate-500 text-sm mt-0.5">
+            {new Date().toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })} · Sistem berjalan normal
+          </p>
         </div>
         <button
           onClick={() => navigate("/upload")}
@@ -376,10 +410,10 @@ function Dashboard() {
       {/* Stat widgets */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Total Arsip", value: total.toLocaleString("id-ID"), delta: "+104 bulan ini", icon: Archive, color: "#1a56db", bg: "#dbeafe" },
-          { label: "Upload Baru", value: "104", delta: "+18% dari bulan lalu", icon: ArrowUpRight, color: "#16a34a", bg: "#dcfce7" },
-          { label: "Dokumen Aktif", value: "3.891", delta: "83.8% dari total", icon: FileText, color: "#d97706", bg: "#fef3c7" },
-          { label: "Unit Kerja", value: "12", delta: "Semua terhubung", icon: Layers, color: "#7c3aed", bg: "#ede9fe" },
+          { label: "Total Arsip", value: total.toLocaleString("id-ID"), icon: Archive, color: "#1a56db", bg: "#dbeafe" },
+          { label: "Upload Bulan Ini", value: uploadBulanIni.toLocaleString("id-ID"), icon: ArrowUpRight, color: "#16a34a", bg: "#dcfce7" },
+          { label: "Kategori Terbanyak", value: kategoriTerbanyak, icon: FileText, color: "#d97706", bg: "#fef3c7" },
+          { label: "Kontributor Aktif", value: kontributorAktif.toLocaleString("id-ID"), icon: Layers, color: "#7c3aed", bg: "#ede9fe" },
         ].map((w) => (
           <div key={w.label} className="bg-white rounded-xl border border-[#e2e8f0] p-5 hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between mb-3">
@@ -389,10 +423,6 @@ function Dashboard() {
               </div>
             </div>
             <div className="text-2xl font-bold text-[#0f1c2e] mb-1">{w.value}</div>
-            <div className="text-xs text-slate-400 flex items-center gap-1">
-              <Check style={{ width: 11, height: 11, color: "#22c55e" }} />
-              {w.delta}
-            </div>
           </div>
         ))}
       </div>
@@ -404,33 +434,42 @@ function Dashboard() {
           <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="text-sm font-bold text-[#0f1c2e]">Volume Arsip per Tahun</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Jumlah dokumen yang diarsipkan 2018–2024</p>
+              <p className="text-xs text-slate-400 mt-0.5">Jumlah dokumen yang diarsipkan berdasarkan tahun surat</p>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 rounded-sm bg-[#1a56db]" />
               <span className="text-xs text-slate-500">Jumlah Dokumen</span>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={ARCHIVE_DATA} barSize={32} margin={{ left: -10, right: 0, bottom: 0, top: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeWidth={1.5} strokeOpacity={0.8} vertical={false} />
-              <XAxis dataKey="year" tick={{ fontSize: 12, fill: "#94a3b8", fontFamily: "Inter" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: "#94a3b8", fontFamily: "Inter" }} axisLine={false} tickLine={false} />
-              <Tooltip
-                contentStyle={{ background: "#0f1c2e", border: "none", borderRadius: 8, fontSize: 12, color: "#e2e8f0" }}
-                cursor={{ fill: "#f1f5f9" }}
-                formatter={(v) => [v.toLocaleString("id-ID"), "Dokumen"]}
-              />
-              <Bar dataKey="total" fill="#1a56db" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          {volumePerTahun.length === 0 ? (
+            <div className="h-[240px] flex items-center justify-center text-sm text-slate-400">
+              Belum ada arsip yang diunggah
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={volumePerTahun} barSize={32} margin={{ left: -10, right: 0, bottom: 0, top: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeWidth={1.5} strokeOpacity={0.8} vertical={false} />
+                <XAxis dataKey="year" tick={{ fontSize: 12, fill: "#94a3b8", fontFamily: "Inter" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8", fontFamily: "Inter" }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{ background: "#0f1c2e", border: "none", borderRadius: 8, fontSize: 12, color: "#e2e8f0" }}
+                  cursor={{ fill: "#f1f5f9" }}
+                  formatter={(v) => [v.toLocaleString("id-ID"), "Dokumen"]}
+                />
+                <Bar dataKey="total" fill="#1a56db" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Quick access / recent */}
         <div className="bg-white rounded-xl border border-[#e2e8f0] p-5 flex flex-col">
           <h3 className="text-sm font-bold text-[#0f1c2e] mb-4">Arsip Terbaru</h3>
           <div className="flex-1 space-y-3 overflow-y-auto">
-            {DOCUMENTS.slice(0, 5).map((doc) => (
+            {recentDocs.length === 0 && (
+              <div className="text-xs text-slate-400 text-center py-6">Belum ada arsip yang diunggah</div>
+            )}
+            {recentDocs.map((doc) => (
               <div
                 key={doc.id}
                 className="flex items-start gap-3 p-3 rounded-lg hover:bg-[#f8fafc] cursor-pointer transition-colors group"
@@ -442,7 +481,7 @@ function Dashboard() {
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-semibold text-[#0f1c2e] truncate group-hover:text-[#1a56db] transition-colors">{doc.perihal}</div>
                   <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
-                    <Clock style={{ width: 9, height: 9 }} /> {doc.tanggal}
+                    <Clock style={{ width: 9, height: 9 }} /> {formatTanggal(doc.tanggalSurat)}
                   </div>
                 </div>
               </div>
@@ -468,13 +507,30 @@ function ArchivePage() {
   const [page, setPage] = useState(1);
   const [filterYear, setFilterYear] = useState("");
   const [filterCat, setFilterCat] = useState("");
-  const [filterPrio, setFilterPrio] = useState("");
-  const [filterTeam, setFilterTeam] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [archives, setArchives] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const filtered = DOCUMENTS.filter((d) => {
-    if (filterYear && String(d.tahun) !== filterYear) return false;
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setIsLoading(true);
+      const qs = searchQuery ? `?search=${encodeURIComponent(searchQuery)}` : "";
+      authFetch(`/arsip${qs}`)
+        .then(async (res) => {
+          if (!res.ok) throw new Error(await parseErrorMessage(res, "Gagal memuat data arsip"));
+          return res.json();
+        })
+        .then((data) => setArchives(data))
+        .catch((error) => toast.error(error.message))
+        .finally(() => setIsLoading(false));
+    }, 350);
+
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
+
+  const filtered = archives.filter((d) => {
+    if (filterYear && String(new Date(d.tanggalSurat).getFullYear()) !== filterYear) return false;
     if (filterCat && d.kategori !== filterCat) return false;
-    if (filterPrio && d.prioritas !== filterPrio) return false;
     return true;
   });
 
@@ -503,7 +559,7 @@ function ArchivePage() {
     <div className="p-7 space-y-5">
       <div>
         <h2 className="text-xl font-bold text-[#0f1c2e]">Pencarian Lanjutan</h2>
-        <p className="text-slate-500 text-sm mt-0.5">Gunakan filter di bawah untuk mempersempit hasil pencarian</p>
+        <p className="text-slate-500 text-sm mt-0.5">Cari berdasarkan nomor surat, perihal, atau kategori — atau gunakan filter di bawah</p>
       </div>
 
       {/* Filter bar */}
@@ -511,20 +567,30 @@ function ArchivePage() {
         <div className="flex items-center gap-2 mb-4">
           <Filter style={{ width: 15, height: 15, color: "#1a56db" }} />
           <span className="text-sm font-semibold text-[#0f1c2e]">Filter Pencarian</span>
-          {(filterYear || filterCat || filterPrio) && (
+          {(filterYear || filterCat || searchQuery) && (
             <button
-              onClick={() => { setFilterYear(""); setFilterCat(""); setFilterPrio(""); setFilterTeam(""); setPage(1); }}
+              onClick={() => { setFilterYear(""); setFilterCat(""); setSearchQuery(""); setPage(1); }}
               className="ml-auto text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
             >
               <X style={{ width: 11, height: 11 }} /> Hapus Filter
             </button>
           )}
         </div>
-        <div className="grid grid-cols-4 gap-4">
-          <Sel label="Rentang Tahun" value={filterYear} onChange={setFilterYear} opts={["2018","2019","2020","2021","2022","2023","2024"]} />
+        <div className="grid grid-cols-3 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Cari Dokumen</label>
+            <div className="relative">
+              <Search style={{ width: 13, height: 13, position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
+              <input
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+                placeholder="Nomor surat, perihal, atau kategori..."
+                className="w-full bg-white border border-[#e2e8f0] text-slate-700 text-xs rounded-md pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1a56db]/30 focus:border-[#1a56db]"
+              />
+            </div>
+          </div>
+          <Sel label="Rentang Tahun" value={filterYear} onChange={setFilterYear} opts={["2018","2019","2020","2021","2022","2023","2024","2025","2026"]} />
           <Sel label="Kategori" value={filterCat} onChange={setFilterCat} opts={["Perizinan","Keuangan","Kepegawaian","Pengadaan","Aset","Audit","Umum"]} />
-          <Sel label="Tingkat Prioritas" value={filterPrio} onChange={setFilterPrio} opts={["Tinggi","Normal","Rahasia"]} />
-          <Sel label="Unit/Tim" value={filterTeam} onChange={setFilterTeam} opts={["Sekretariat","Bidang I","Bidang II","Bidang III"]} />
         </div>
       </div>
 
@@ -542,7 +608,7 @@ function ArchivePage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#f8fafc]">
-                {["No. Surat","Perihal","Jenis","Tahun","Tanggal Upload","Uploader","Prioritas","Aksi"].map((h) => (
+                {["No. Surat","Perihal","Kategori","Tahun","Tanggal Surat","Uploader","Aksi"].map((h) => (
                   <th key={h} className="text-left px-4 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider border-b border-[#f1f5f9] whitespace-nowrap">
                     {h}
                   </th>
@@ -550,30 +616,30 @@ function ArchivePage() {
               </tr>
             </thead>
             <tbody>
-              {paged.map((doc, i) => (
+              {isLoading && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400 text-sm">Memuat data arsip...</td>
+                </tr>
+              )}
+              {!isLoading && paged.map((doc, i) => (
                 <tr
                   key={doc.id}
                   className={`hover:bg-[#f8fafc] transition-colors ${i < paged.length - 1 ? "border-b border-[#f4f6f9]" : ""}`}
                 >
                   <td className="px-4 py-3.5">
-                    <span className="text-xs font-mono text-[#1a56db] font-semibold">{doc.id}</span>
+                    <span className="text-xs font-mono text-[#1a56db] font-semibold">{doc.nomorSurat}</span>
                   </td>
                   <td className="px-4 py-3.5 max-w-[200px]">
                     <span className="text-slate-700 text-xs font-medium line-clamp-2 block">{doc.perihal}</span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium">{doc.jenis}</span>
+                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium">{doc.kategori}</span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className="text-xs font-mono text-slate-500">{doc.tahun}</span>
+                    <span className="text-xs font-mono text-slate-500">{new Date(doc.tanggalSurat).getFullYear()}</span>
                   </td>
-                  <td className="px-4 py-3.5 text-xs text-slate-500 whitespace-nowrap">{doc.tanggal}</td>
-                  <td className="px-4 py-3.5 text-xs text-slate-600 whitespace-nowrap">{doc.uploader}</td>
-                  <td className="px-4 py-3.5">
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${PRIORITY_COLORS[doc.prioritas]}`}>
-                      {doc.prioritas}
-                    </span>
-                  </td>
+                  <td className="px-4 py-3.5 text-xs text-slate-500 whitespace-nowrap">{formatTanggal(doc.tanggalSurat)}</td>
+                  <td className="px-4 py-3.5 text-xs text-slate-600 whitespace-nowrap">{doc.uploader?.namaLengkap ?? "-"}</td>
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-1.5">
                       <button
@@ -600,9 +666,9 @@ function ArchivePage() {
                   </td>
                 </tr>
               ))}
-              {paged.length === 0 && (
+              {!isLoading && paged.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400 text-sm">
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400 text-sm">
                     <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     Tidak ada dokumen yang sesuai dengan filter
                   </td>
@@ -655,8 +721,25 @@ function ArchivePage() {
 function DetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const doc = DOCUMENTS.find((d) => d.id === id);
+  const [doc, setDoc] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const onBack = () => navigate("/arsip");
+
+  useEffect(() => {
+    setIsLoading(true);
+    authFetch(`/arsip/${id}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await parseErrorMessage(res, "Dokumen tidak ditemukan"));
+        return res.json();
+      })
+      .then((data) => setDoc(data))
+      .catch(() => setDoc(null))
+      .finally(() => setIsLoading(false));
+  }, [id]);
+
+  if (isLoading) {
+    return <div className="p-10 text-center text-slate-400 text-sm">Memuat dokumen...</div>;
+  }
 
   if (!doc) {
     return (
@@ -673,6 +756,8 @@ function DetailPage() {
     );
   }
 
+  const fileUrl = doc.fileUrl ? `${FILE_BASE_URL}${doc.fileUrl}` : null;
+
   return (
     <div className="flex h-full flex-col">
       {/* Sub-header */}
@@ -686,7 +771,7 @@ function DetailPage() {
         <div className="h-4 w-px bg-slate-200" />
         <span className="text-sm text-slate-400">Detail Dokumen</span>
         <span className="text-[10px] bg-blue-50 text-[#1a56db] border border-blue-100 px-2 py-0.5 rounded-full font-semibold ml-auto" style={{ fontFamily: "'DM Mono', monospace" }}>
-          {doc.id}
+          {doc.nomorSurat}
         </span>
       </div>
 
@@ -698,70 +783,29 @@ function DetailPage() {
           <div className="bg-[#1f2937] px-4 py-2.5 flex items-center gap-3 border-b border-white/10">
             <span className="text-slate-300 text-xs font-medium flex items-center gap-2">
               <FileText style={{ width: 13, height: 13, color: "#60a5fa" }} />
-              {doc.id}_surat_resmi.pdf
+              {doc.fileUrl?.split("/").pop() ?? "dokumen.pdf"}
             </span>
             <div className="ml-auto flex items-center gap-2">
-              <button className="text-slate-400 hover:text-white text-xs px-2.5 py-1 rounded hover:bg-white/10 transition-colors flex items-center gap-1.5">
+              <a
+                href={fileUrl ?? undefined}
+                target="_blank"
+                rel="noreferrer"
+                className="text-slate-400 hover:text-white text-xs px-2.5 py-1 rounded hover:bg-white/10 transition-colors flex items-center gap-1.5"
+              >
                 <Download style={{ width: 12, height: 12 }} /> Unduh
-              </button>
+              </a>
             </div>
           </div>
 
-          {/* Mock PDF page */}
-          <div className="flex-1 overflow-y-auto flex items-start justify-center py-8 px-6">
-            <div className="w-full max-w-lg bg-white rounded-sm shadow-2xl">
-              {/* PDF content mockup */}
-              <div className="p-10 text-xs" style={{ fontFamily: "Georgia, serif", lineHeight: 1.8, color: "#111" }}>
-                {/* Letterhead */}
-                <div className="flex items-start gap-4 border-b-2 border-gray-800 pb-4 mb-5">
-                  <div className="w-14 h-14 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                    <Shield className="w-7 h-7 text-gray-600" />
-                  </div>
-                  <div className="text-center flex-1">
-                    <div className="font-bold text-[11px] uppercase tracking-wide">PEMERINTAH KOTA MEDAN</div>
-                    <div className="text-[10px] uppercase tracking-wide">DINAS SUBSTANSI X</div>
-                    <div className="text-[9px] text-gray-500 mt-0.5">Jl. Kapten Maulana Lubis No. 2, Medan 20112</div>
-                    <div className="text-[9px] text-gray-500">Telp. (061) 4515218 | Fax. (061) 4155765</div>
-                  </div>
-                </div>
-
-                <div className="text-center mb-5">
-                  <div className="font-bold text-[11px] uppercase underline">SURAT KEPUTUSAN</div>
-                  <div className="text-[10px] mt-0.5">Nomor: {doc.id}</div>
-                </div>
-
-                <div className="mb-4">
-                  <div className="font-bold mb-1">TENTANG</div>
-                  <div className="pl-4 border-l-2 border-gray-300 italic">{doc.perihal}</div>
-                </div>
-
-                <div className="mb-3">
-                  <span className="font-bold">KEPALA DINAS SUBSTANSI X KOTA MEDAN</span>
-                </div>
-
-                <div className="space-y-2 mb-4">
-                  <div><span className="font-bold">Menimbang </span>: a. bahwa dalam rangka meningkatkan kualitas pengelolaan administrasi dan pelayanan publik di lingkungan Pemerintah Kota Medan;</div>
-                  <div className="pl-[82px]">b. bahwa berdasarkan ketentuan peraturan perundang-undangan yang berlaku, dipandang perlu untuk menetapkan keputusan ini;</div>
-                  <div><span className="font-bold">Mengingat </span>: 1. Undang-Undang Nomor 23 Tahun 2014 tentang Pemerintahan Daerah;</div>
-                  <div className="pl-[74px]">2. Peraturan Pemerintah Nomor 18 Tahun 2016 tentang Perangkat Daerah;</div>
-                </div>
-
-                <div className="text-center font-bold mb-3 uppercase">MEMUTUSKAN:</div>
-                <div className="mb-2"><span className="font-bold">Menetapkan </span>: {doc.perihal}</div>
-
-                <div className="mt-6 flex justify-end">
-                  <div className="text-center text-[10px]">
-                    <div>Medan, {doc.tanggal}</div>
-                    <div className="font-bold">Kepala Dinas Substansi X</div>
-                    <div className="w-24 h-16 mx-auto my-2 border border-dashed border-gray-300 flex items-center justify-center text-gray-300 text-[8px]">
-                      TTD + STEMPEL
-                    </div>
-                    <div className="font-bold underline">Drs. H. Surya Bahtiar, M.Si</div>
-                    <div>NIP. 196805121994031004</div>
-                  </div>
-                </div>
+          {/* Real PDF viewer */}
+          <div className="flex-1 bg-slate-500">
+            {fileUrl ? (
+              <iframe src={fileUrl} title={doc.perihal} className="w-full h-full border-0" />
+            ) : (
+              <div className="flex items-center justify-center h-full text-slate-300 text-sm">
+                Berkas tidak tersedia
               </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -772,23 +816,22 @@ function DetailPage() {
           </div>
 
           <div className="p-5 space-y-5 flex-1">
-            {/* Priority badge */}
+            {/* Kategori badge */}
             <div className="flex items-center justify-between">
-              <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${PRIORITY_COLORS[doc.prioritas]}`}>
-                {doc.prioritas === "Rahasia" ? "🔒 " : ""}{doc.prioritas}
+              <span className="text-xs font-semibold px-3 py-1 rounded-full border bg-blue-50 text-[#1a56db] border-blue-100">
+                {doc.kategori}
               </span>
-              <span className="text-[10px] text-slate-400 font-mono">{doc.jenis}</span>
             </div>
 
             {/* Meta fields */}
             <div className="space-y-4">
               {[
-                { label: "ID Dokumen", value: doc.id, icon: Tag, mono: true },
-                { label: "Tanggal Surat", value: doc.tanggal, icon: Calendar, mono: false },
+                { label: "Nomor Surat", value: doc.nomorSurat, icon: Tag, mono: true },
+                { label: "Tanggal Surat", value: formatTanggal(doc.tanggalSurat), icon: Calendar, mono: false },
                 { label: "Perihal", value: doc.perihal, icon: FileText, mono: false },
                 { label: "Kategori", value: doc.kategori, icon: FolderOpen, mono: false },
-                { label: "Tahun Arsip", value: String(doc.tahun), icon: Clock, mono: true },
-                { label: "Diunggah oleh", value: doc.uploader, icon: User, mono: false },
+                { label: "Tahun Arsip", value: String(new Date(doc.tanggalSurat).getFullYear()), icon: Clock, mono: true },
+                { label: "Diunggah oleh", value: doc.uploader?.namaLengkap ?? "-", icon: User, mono: false },
               ].map((f) => (
                 <div key={f.label}>
                   <div className="flex items-center gap-1.5 mb-1">
@@ -816,30 +859,22 @@ function DetailPage() {
                   <div className="text-[10px] text-amber-600">Arsip Konvensional</div>
                 </div>
               </div>
-              <div className="space-y-2">
-                {[
-                  { label: "Lemari", value: "Lemari A" },
-                  { label: "Rak / Laci", value: "Rak ke-2" },
-                  { label: "Ordner / Binder", value: "Ordner Merah — 2023/IV" },
-                  { label: "Nomor Urut Fisik", value: "No. 089" },
-                ].map((loc) => (
-                  <div key={loc.label} className="flex items-center justify-between text-xs">
-                    <span className="text-amber-700 font-medium">{loc.label}</span>
-                    <span className="font-bold text-amber-900" style={{ fontFamily: "'DM Mono', monospace", fontSize: 11 }}>{loc.value}</span>
-                  </div>
-                ))}
+              <div className="text-xs font-bold text-amber-900" style={{ fontFamily: "'DM Mono', monospace", fontSize: 11 }}>
+                {doc.storageLocation || "-"}
               </div>
             </div>
           </div>
 
           {/* Action buttons */}
           <div className="p-5 border-t border-[#f1f5f9] space-y-2">
-            <button className="w-full bg-[#1a56db] text-white text-sm font-semibold py-2.5 rounded-md hover:bg-[#1d4ed8] transition-colors flex items-center justify-center gap-2">
+            <a
+              href={fileUrl ?? undefined}
+              target="_blank"
+              rel="noreferrer"
+              className="w-full bg-[#1a56db] text-white text-sm font-semibold py-2.5 rounded-md hover:bg-[#1d4ed8] transition-colors flex items-center justify-center gap-2"
+            >
               <Download style={{ width: 15, height: 15 }} /> Unduh Dokumen
-            </button>
-            <button className="w-full border border-[#e2e8f0] text-slate-600 text-sm font-medium py-2.5 rounded-md hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
-              <Eye style={{ width: 15, height: 15 }} /> Lihat Riwayat
-            </button>
+            </a>
           </div>
         </div>
       </div>
@@ -850,28 +885,73 @@ function DetailPage() {
 /* ─────────────────────────────────────────────
    FRAME 5 – ADMIN UPLOAD FORM
 ───────────────────────────────────────────── */
+const emptyUploadFormData = {
+  nomorSurat: "",
+  tanggal: "",
+  perihal: "",
+  jenis: "",
+  kategori: "",
+  prioritas: "",
+  lemari: "",
+  rak: "",
+  ordner: "",
+  keterangan: "",
+};
+
 function UploadPage() {
+  const navigate = useNavigate();
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [uploadStep, setUploadStep] = useState(0);
-  const [formData, setFormData] = useState({
-    nomorSurat: "",
-    tanggal: "",
-    perihal: "",
-    jenis: "",
-    kategori: "",
-    prioritas: "",
-    lemari: "",
-    rak: "",
-    ordner: "",
-    keterangan: "",
-  });
+  const [formData, setFormData] = useState(emptyUploadFormData);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const update = (k, v) => setFormData({ ...formData, [k]: v });
-  const [saved, setSaved] = useState(false);
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+  const handleSubmit = async () => {
+    if (!uploadedFile) {
+      toast.error("Unggah berkas PDF terlebih dahulu.");
+      return;
+    }
+    if (!formData.nomorSurat || !formData.tanggal || !formData.perihal || !formData.kategori) {
+      toast.error("Lengkapi field metadata dokumen yang wajib diisi.");
+      return;
+    }
+    if (!formData.lemari || !formData.rak || !formData.ordner) {
+      toast.error("Lengkapi field lokasi penyimpanan fisik yang wajib diisi.");
+      return;
+    }
+
+    const storageLocation = [
+      formData.lemari,
+      formData.rak,
+      `Ordner: ${formData.ordner}`,
+      formData.keterangan,
+    ].filter(Boolean).join(", ");
+
+    const body = new FormData();
+    body.append("file", uploadedFile);
+    body.append("nomorSurat", formData.nomorSurat);
+    body.append("perihal", formData.perihal);
+    body.append("kategori", formData.kategori);
+    body.append("tanggalSurat", formData.tanggal);
+    body.append("storageLocation", storageLocation);
+
+    setIsSubmitting(true);
+    try {
+      const response = await authFetch("/arsip", { method: "POST", body });
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response, "Gagal mengunggah dokumen."));
+      }
+      toast.success("Arsip berhasil diunggah dan tersimpan.");
+      setFormData(emptyUploadFormData);
+      setUploadedFile(null);
+      setUploadStep(0);
+      navigate("/arsip");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -914,7 +994,17 @@ function UploadPage() {
             e.preventDefault();
             setIsDragging(false);
             const file = e.dataTransfer.files[0];
-            if (file) { setUploadedFile(file.name); setUploadStep(1); }
+            if (!file) return;
+            if (file.type !== "application/pdf") {
+              toast.error("Hanya file PDF yang diperbolehkan.");
+              return;
+            }
+            if (file.size > 25 * 1024 * 1024) {
+              toast.error("Ukuran file maksimal 25 MB.");
+              return;
+            }
+            setUploadedFile(file);
+            setUploadStep(1);
           }}
           className={`rounded-xl border-2 border-dashed transition-all cursor-pointer py-10 flex flex-col items-center justify-center text-center ${
             uploadedFile
@@ -929,7 +1019,7 @@ function UploadPage() {
               <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mb-3">
                 <Check className="w-6 h-6 text-emerald-600" />
               </div>
-              <div className="text-sm font-bold text-emerald-700">{uploadedFile}</div>
+              <div className="text-sm font-bold text-emerald-700">{uploadedFile.name}</div>
               <div className="text-xs text-emerald-500 mt-1">Berkas siap untuk diarsipkan</div>
               <button
                 onClick={() => { setUploadedFile(null); setUploadStep(0); }}
@@ -953,7 +1043,17 @@ function UploadPage() {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file) { setUploadedFile(file.name); setUploadStep(1); }
+                    if (!file) return;
+                    if (file.type !== "application/pdf") {
+                      toast.error("Hanya file PDF yang diperbolehkan.");
+                      return;
+                    }
+                    if (file.size > 25 * 1024 * 1024) {
+                      toast.error("Ukuran file maksimal 25 MB.");
+                      return;
+                    }
+                    setUploadedFile(file);
+                    setUploadStep(1);
                   }}
                 />
               </label>
@@ -1041,14 +1141,11 @@ function UploadPage() {
               Simpan Draf
             </button>
             <button
-              onClick={handleSave}
-              className={`text-sm font-bold px-7 py-2.5 rounded-md transition-all flex items-center gap-2 shadow-md ${
-                saved
-                  ? "bg-emerald-500 text-white shadow-emerald-200"
-                  : "bg-[#1a56db] text-white hover:bg-[#1d4ed8] shadow-blue-200"
-              }`}
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className="text-sm font-bold px-7 py-2.5 rounded-md transition-all flex items-center gap-2 shadow-md bg-[#1a56db] text-white hover:bg-[#1d4ed8] shadow-blue-200 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {saved ? <><Check style={{ width: 15, height: 15 }} /> Tersimpan!</> : <><Archive style={{ width: 15, height: 15 }} /> Simpan & Arsipkan</>}
+              {isSubmitting ? "Menyimpan..." : <><Archive style={{ width: 15, height: 15 }} /> Simpan & Arsipkan</>}
             </button>
           </div>
         </div>
@@ -1107,64 +1204,6 @@ function SelectField({
    FRAME 6 – USER MANAGEMENT PAGE
 ───────────────────────────────────────────── */
 
-const SYSTEM_USERS = [
-  {
-    id: 1,
-    nama: "Dewi Anggraini, S.Sos",
-    nip: "198704122010012014",
-    tim: "Sekretariat",
-    role: "Admin",
-    status: "Aktif",
-    avatar: "DA",
-    lastLogin: "06 Jul 2025, 08:45",
-    email: "dewi.anggraini@pemkomedan.go.id",
-  },
-  {
-    id: 2,
-    nama: "Rizky Pratama, A.Md",
-    nip: "199203072015031002",
-    tim: "Bidang I — Perencanaan",
-    role: "Staf",
-    status: "Aktif",
-    avatar: "RP",
-    lastLogin: "05 Jul 2025, 14:32",
-    email: "rizky.pratama@pemkomedan.go.id",
-  },
-  {
-    id: 3,
-    nama: "Siti Rahayu, S.Kom",
-    nip: "199508182019022003",
-    tim: "Bidang II — Keuangan",
-    role: "Staf",
-    status: "Aktif",
-    avatar: "SR",
-    lastLogin: "04 Jul 2025, 09:15",
-    email: "siti.rahayu@pemkomedan.go.id",
-  },
-  {
-    id: 4,
-    nama: "Ahmad Fauzi, S.AP",
-    nip: "198811052012011007",
-    tim: "Bidang III — Kepegawaian",
-    role: "Admin",
-    status: "Aktif",
-    avatar: "AF",
-    lastLogin: "03 Jul 2025, 16:00",
-    email: "ahmad.fauzi@pemkomedan.go.id",
-  },
-  {
-    id: 5,
-    nama: "Rina Kusuma, S.E",
-    nip: "200001152022032001",
-    tim: "Bidang I — Perencanaan",
-    role: "Staf",
-    status: "Aktif",
-    avatar: "RK",
-    lastLogin: "01 Jul 2025, 11:20",
-    email: "rina.kusuma@pemkomedan.go.id",
-  },
-];
-
 const AVATAR_COLORS = {
   DA: { bg: "#dbeafe", text: "#1a56db" },
   RP: { bg: "#dcfce7", text: "#16a34a" },
@@ -1173,57 +1212,115 @@ const AVATAR_COLORS = {
   RK: { bg: "#ede9fe", text: "#7c3aed" },
 };
 
+function getInitials(name) {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase()).join("");
+}
+
 function UserManagementPage() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [resetTarget, setResetTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [users, setUsers] = useState(SYSTEM_USERS);
+  const [users, setUsers] = useState([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [editTarget, setEditTarget] = useState(null);
-  const [toast, setToast] = useState(null);
+  const emptyFormData = { namaLengkap: "", nip: "", password: "", role: "staf" };
+  const [formData, setFormData] = useState(emptyFormData);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const showToast = (msg, type = "success") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3200);
+  const notify = (msg, type = "success") => {
+    if (type === "danger") return toast.error(msg);
+    if (type === "info") return toast.info(msg);
+    return toast.success(msg);
   };
+
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    fetch(`${API_BASE_URL}/users`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Gagal memuat data pengguna.");
+        return res.json();
+      })
+      .then((data) => setUsers(data))
+      .catch((error) => notify(error.message, "danger"))
+      .finally(() => setIsLoadingUsers(false));
+  }, []);
 
   const filtered = users.filter((u) => {
     const q = search.toLowerCase();
-    const matchSearch = !q || u.nama.toLowerCase().includes(q) || u.nip.includes(q);
+    const matchSearch = !q || u.namaLengkap.toLowerCase().includes(q) || u.nip.includes(q);
     const matchRole = !roleFilter || u.role === roleFilter;
     return matchSearch && matchRole;
   });
 
+  const openAddModal = () => {
+    setEditTarget(null);
+    setFormData(emptyFormData);
+    setShowModal(true);
+  };
+
+  const openEditModal = (user) => {
+    setEditTarget(user);
+    setFormData({ namaLengkap: user.namaLengkap, nip: user.nip, password: "", role: user.role });
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditTarget(null);
+    setFormData(emptyFormData);
+  };
+
+  const handleSubmit = async () => {
+    if (editTarget) {
+      // No backend endpoint for updating a user yet — keep this local-only for now.
+      closeModal();
+      notify("Data pengguna berhasil diperbarui.", "success");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const token = localStorage.getItem(TOKEN_KEY);
+      const response = await fetch(`${API_BASE_URL}/users`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const serverMessage = Array.isArray(body?.message) ? body.message[0] : body?.message;
+        throw new Error(serverMessage || "Gagal menambahkan pengguna.");
+      }
+
+      setUsers((prev) => [body, ...prev]);
+      closeModal();
+      notify("Pengguna baru berhasil ditambahkan.", "success");
+    } catch (error) {
+      notify(error.message, "danger");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleDelete = (id) => {
     setUsers((prev) => prev.filter((u) => u.id !== id));
     setDeleteTarget(null);
-    showToast("Pengguna berhasil dihapus dari sistem.", "danger");
-  };
-
-  const toastColors = {
-    success: { bg: "#f0fdf4", border: "#86efac", text: "#15803d", icon: Check },
-    info: { bg: "#eff6ff", border: "#93c5fd", text: "#1d4ed8", icon: KeyRound },
-    danger: { bg: "#fef2f2", border: "#fca5a5", text: "#b91c1c", icon: Trash2 },
+    notify("Pengguna berhasil dihapus dari sistem.", "danger");
   };
 
   return (
     <div className="p-7 space-y-6 relative">
-      {/* Toast */}
-      {toast && (() => {
-        const tc = toastColors[toast.type];
-        const Icon = tc.icon;
-        return (
-          <div
-            className="fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-300"
-            style={{ background: tc.bg, borderColor: tc.border, color: tc.text, minWidth: 280 }}
-          >
-            <Icon style={{ width: 15, height: 15 }} />
-            {toast.msg}
-          </div>
-        );
-      })()}
-
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
@@ -1233,7 +1330,7 @@ function UserManagementPage() {
           </p>
         </div>
         <button
-          onClick={() => setShowModal(true)}
+          onClick={openAddModal}
           className="flex items-center gap-2 bg-[#1a56db] hover:bg-[#1d4ed8] text-white text-sm font-semibold px-4 py-2.5 rounded-md transition-colors shadow-md shadow-blue-200"
         >
           <UserPlus style={{ width: 15, height: 15 }} />
@@ -1245,8 +1342,8 @@ function UserManagementPage() {
       <div className="flex items-center gap-3">
         {[
           { label: "Total Pengguna", value: users.length, icon: Users, color: "#1a56db", bg: "#dbeafe" },
-          { label: "Administrator", value: users.filter((u) => u.role === "Admin").length, icon: ShieldCheck, color: "#d97706", bg: "#fef3c7" },
-          { label: "Staf Aktif", value: users.filter((u) => u.role === "Staf").length, icon: UserCheck, color: "#16a34a", bg: "#dcfce7" },
+          { label: "Administrator", value: users.filter((u) => u.role === "admin").length, icon: ShieldCheck, color: "#d97706", bg: "#fef3c7" },
+          { label: "Staf Aktif", value: users.filter((u) => u.role === "staf").length, icon: UserCheck, color: "#16a34a", bg: "#dcfce7" },
         ].map((c) => (
           <div key={c.label} className="flex items-center gap-3 bg-white border border-[#e2e8f0] rounded-xl px-4 py-3">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: c.bg }}>
@@ -1284,8 +1381,8 @@ function UserManagementPage() {
             className="bg-white border border-[#e2e8f0] text-slate-600 text-sm rounded-md pl-3 pr-8 py-2 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1a56db]/30 focus:border-[#1a56db] transition-colors"
           >
             <option value="">Semua Role</option>
-            <option value="Admin">Admin</option>
-            <option value="Staf">Staf</option>
+            <option value="admin">Admin</option>
+            <option value="staf">Staf</option>
           </select>
           <ChevronDown style={{ width: 12, height: 12, position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", pointerEvents: "none" }} />
         </div>
@@ -1313,7 +1410,8 @@ function UserManagementPage() {
             </thead>
             <tbody>
               {filtered.map((user, i) => {
-                const av = AVATAR_COLORS[user.avatar] ?? { bg: "#f1f5f9", text: "#64748b" };
+                const initials = getInitials(user.namaLengkap);
+                const av = AVATAR_COLORS[initials] ?? { bg: "#f1f5f9", text: "#64748b" };
                 return (
                   <tr
                     key={user.id}
@@ -1326,13 +1424,10 @@ function UserManagementPage() {
                           className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
                           style={{ background: av.bg, color: av.text }}
                         >
-                          {user.avatar}
+                          {initials}
                         </div>
-                        <div>
-                          <div className="text-sm font-semibold text-[#0f1c2e] group-hover:text-[#1a56db] transition-colors">
-                            {user.nama}
-                          </div>
-                          <div className="text-[10px] text-slate-400">{user.email}</div>
+                        <div className="text-sm font-semibold text-[#0f1c2e] group-hover:text-[#1a56db] transition-colors">
+                          {user.namaLengkap}
                         </div>
                       </div>
                     </td>
@@ -1349,12 +1444,12 @@ function UserManagementPage() {
 
                     {/* Tim */}
                     <td className="px-5 py-4">
-                      <span className="text-xs text-slate-600 font-medium">{user.tim}</span>
+                      <span className="text-xs text-slate-600 font-medium">-</span>
                     </td>
 
                     {/* Role badge */}
                     <td className="px-5 py-4">
-                      {user.role === "Admin" ? (
+                      {user.role === "admin" ? (
                         <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
                           <ShieldCheck style={{ width: 10, height: 10 }} />
                           Admin
@@ -1370,8 +1465,10 @@ function UserManagementPage() {
                     {/* Status */}
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-200 animate-pulse" />
-                        <span className="text-xs font-semibold text-emerald-700">Aktif</span>
+                        <div className={`w-1.5 h-1.5 rounded-full shadow-sm ${user.isActive ? "bg-emerald-500 shadow-emerald-200 animate-pulse" : "bg-slate-300 shadow-slate-100"}`} />
+                        <span className={`text-xs font-semibold ${user.isActive ? "text-emerald-700" : "text-slate-400"}`}>
+                          {user.isActive ? "Aktif" : "Nonaktif"}
+                        </span>
                       </div>
                     </td>
 
@@ -1379,7 +1476,7 @@ function UserManagementPage() {
                     <td className="px-5 py-4">
                       <span className="text-xs text-slate-400 flex items-center gap-1">
                         <Clock style={{ width: 11, height: 11 }} />
-                        {user.lastLogin}
+                        -
                       </span>
                     </td>
 
@@ -1389,7 +1486,7 @@ function UserManagementPage() {
                         {/* Edit */}
                         <button
                           title="Edit Pengguna"
-                          onClick={() => { setEditTarget(user); setShowModal(true); }}
+                          onClick={() => openEditModal(user)}
                           className="p-2 rounded-md text-slate-400 hover:text-[#1a56db] hover:bg-blue-50 transition-colors"
                         >
                           <Pencil style={{ width: 14, height: 14 }} />
@@ -1397,7 +1494,7 @@ function UserManagementPage() {
                         {/* Reset password */}
                         <button
                           title="Reset Password"
-                          onClick={() => { setResetTarget(user.nama); showToast(`Link reset password dikirim ke ${user.email}`, "info"); }}
+                          onClick={() => { setResetTarget(user.namaLengkap); notify(`Link reset password dikirim untuk ${user.namaLengkap}.`, "info"); }}
                           className="p-2 rounded-md text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
                         >
                           <KeyRound style={{ width: 14, height: 14 }} />
@@ -1416,7 +1513,15 @@ function UserManagementPage() {
                 );
               })}
 
-              {filtered.length === 0 && (
+              {isLoadingUsers && (
+                <tr>
+                  <td colSpan={7} className="px-5 py-14 text-center text-sm text-slate-400">
+                    Memuat data pengguna...
+                  </td>
+                </tr>
+              )}
+
+              {!isLoadingUsers && filtered.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-5 py-14 text-center">
                     <Users className="w-10 h-10 mx-auto mb-3 text-slate-200" />
@@ -1490,7 +1595,7 @@ function UserManagementPage() {
                 </h3>
               </div>
               <button
-                onClick={() => { setShowModal(false); setEditTarget(null); }}
+                onClick={closeModal}
                 className="p-1.5 rounded-md hover:bg-slate-100 transition-colors"
               >
                 <X style={{ width: 15, height: 15, color: "#64748b" }} />
@@ -1503,33 +1608,40 @@ function UserManagementPage() {
                 <div className="col-span-2 flex flex-col gap-1.5">
                   <label className="text-xs font-semibold text-slate-500">Nama Lengkap & Gelar *</label>
                   <input
-                    defaultValue={editTarget?.nama ?? ""}
+                    value={formData.namaLengkap}
+                    onChange={(e) => setFormData({ ...formData, namaLengkap: e.target.value })}
                     placeholder="cth: Budi Santoso, S.Kom"
+                    autoComplete="off"
                     className="border border-[#e2e8f0] rounded-md px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#1a56db]/30 focus:border-[#1a56db] bg-white placeholder-slate-300"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold text-slate-500">NIP *</label>
                   <input
-                    defaultValue={editTarget?.nip ?? ""}
+                    value={formData.nip}
+                    onChange={(e) => setFormData({ ...formData, nip: e.target.value.trim() })}
                     placeholder="18 digit NIP"
+                    autoComplete="off"
                     className="border border-[#e2e8f0] rounded-md px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#1a56db]/30 focus:border-[#1a56db] bg-white placeholder-slate-300"
                     style={{ fontFamily: "'DM Mono', monospace" }}
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-500">Email Dinas *</label>
+                  <label className="text-xs font-semibold text-slate-500">Password *</label>
                   <input
-                    defaultValue={editTarget?.email ?? ""}
-                    placeholder="nama@pemkomedan.go.id"
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="Minimal 6 karakter"
+                    autoComplete="new-password"
                     className="border border-[#e2e8f0] rounded-md px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#1a56db]/30 focus:border-[#1a56db] bg-white placeholder-slate-300"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5 relative">
-                  <label className="text-xs font-semibold text-slate-500">Tim / Fungsi *</label>
+                  <label className="text-xs font-semibold text-slate-500">Tim / Fungsi</label>
                   <div className="relative">
                     <select
-                      defaultValue={editTarget?.tim ?? ""}
+                      defaultValue=""
                       className="w-full bg-white border border-[#e2e8f0] text-slate-700 text-sm rounded-md pl-3 pr-7 py-2 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1a56db]/30 focus:border-[#1a56db]"
                     >
                       <option value="">— Pilih Tim —</option>
@@ -1545,12 +1657,12 @@ function UserManagementPage() {
                   <label className="text-xs font-semibold text-slate-500">Role Akses *</label>
                   <div className="relative">
                     <select
-                      defaultValue={editTarget?.role ?? ""}
+                      value={formData.role}
+                      onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                       className="w-full bg-white border border-[#e2e8f0] text-slate-700 text-sm rounded-md pl-3 pr-7 py-2 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1a56db]/30 focus:border-[#1a56db]"
                     >
-                      <option value="">— Pilih Role —</option>
-                      <option>Admin</option>
-                      <option>Staf</option>
+                      <option value="staf">Staf</option>
+                      <option value="admin">Admin</option>
                     </select>
                     <ChevronDown style={{ width: 12, height: 12, position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", pointerEvents: "none" }} />
                   </div>
@@ -1561,7 +1673,7 @@ function UserManagementPage() {
                 <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 flex items-start gap-2.5">
                   <AlertCircle style={{ width: 14, height: 14, color: "#1a56db", marginTop: 1, flexShrink: 0 }} />
                   <p className="text-xs text-blue-700">
-                    Password sementara akan dikirimkan ke email dinas pengguna dan wajib diganti saat login pertama.
+                    Buat password awal untuk pengguna ini. Pengguna disarankan menggantinya setelah login pertama.
                   </p>
                 </div>
               )}
@@ -1570,21 +1682,18 @@ function UserManagementPage() {
             {/* Modal footer */}
             <div className="px-6 py-4 border-t border-[#f1f5f9] flex items-center justify-end gap-3">
               <button
-                onClick={() => { setShowModal(false); setEditTarget(null); }}
+                onClick={closeModal}
                 className="border border-[#e2e8f0] text-slate-600 text-sm font-medium px-5 py-2.5 rounded-md hover:bg-slate-50 transition-colors"
               >
                 Batal
               </button>
               <button
-                onClick={() => {
-                  setShowModal(false);
-                  setEditTarget(null);
-                  showToast(editTarget ? "Data pengguna berhasil diperbarui." : "Pengguna baru berhasil ditambahkan.", "success");
-                }}
-                className="bg-[#1a56db] text-white text-sm font-bold px-6 py-2.5 rounded-md hover:bg-[#1d4ed8] transition-colors flex items-center gap-2 shadow-md shadow-blue-200"
+                disabled={isSubmitting}
+                onClick={handleSubmit}
+                className="bg-[#1a56db] disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-bold px-6 py-2.5 rounded-md hover:bg-[#1d4ed8] transition-colors flex items-center gap-2 shadow-md shadow-blue-200"
               >
                 <Check style={{ width: 14, height: 14 }} />
-                {editTarget ? "Simpan Perubahan" : "Tambahkan Pengguna"}
+                {isSubmitting ? "Menyimpan..." : editTarget ? "Simpan Perubahan" : "Tambahkan Pengguna"}
               </button>
             </div>
           </div>
@@ -1593,3 +1702,4 @@ function UserManagementPage() {
     </div>
   );
 }
+
