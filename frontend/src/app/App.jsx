@@ -1,4 +1,12 @@
 import { useState } from "react";
+import { Routes, Route, useLocation, useNavigate, useParams } from "react-router";
+import Login from "./pages/Login.jsx";
+import { useAuth } from "./context/AuthContext.jsx";
+import { ProtectedRoute } from "./components/ProtectedRoute.jsx";
+import logoPemkotMedan from "../assets/logo-pemkot-medan.png";
+import logoBerakhlak from "../assets/logo-berakhlak.png";
+import logoMedanUntukSemua from "../assets/logo-medan-untuk-semua.png";
+import bgLandingHero from "../assets/bg-landing-hero.jpg";
 import {
   BarChart,
   Bar,
@@ -15,8 +23,7 @@ import {
   Users,
   Shield,
   LogIn,
-  BookOpen,
-  Home,
+  ArrowRight,
   ChevronDown,
   Eye,
   Info,
@@ -45,14 +52,24 @@ import {
   UserPlus,
   UserCheck,
   ShieldCheck,
+  LogOut,
 } from "lucide-react";
 
 const SIDEBAR_NAV = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "archive", label: "Pencarian Lanjutan", icon: Search },
-  { id: "upload", label: "Upload Arsip", icon: Upload, adminOnly: true },
-  { id: "users", label: "Manajemen Pengguna", icon: Users, adminOnly: true },
+  { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { path: "/arsip", label: "Pencarian Lanjutan", icon: Search },
+  { path: "/upload", label: "Upload Arsip", icon: Upload },
+  { path: "/manajemen-pengguna", label: "Manajemen Pengguna", icon: Users, adminOnly: true },
 ];
+
+function getPageLabel(pathname) {
+  if (pathname === "/dashboard") return "Dashboard";
+  if (pathname === "/arsip") return "Pencarian Lanjutan";
+  if (pathname.startsWith("/arsip/")) return "Detail Dokumen";
+  if (pathname === "/upload") return "Upload Arsip";
+  if (pathname === "/manajemen-pengguna") return "Manajemen Pengguna";
+  return "";
+}
 
 const ARCHIVE_DATA = [
   { year: "2018", total: 342 },
@@ -82,67 +99,62 @@ const PRIORITY_COLORS = {
 };
 
 export default function App() {
-  const [screen, setScreen] = useState("landing");
-  const [selectedDoc, setSelectedDoc] = useState(DOCUMENTS[3]);
-  const [sidebarActive, setSidebarActive] = useState("dashboard");
-  const [uploadStep, setUploadStep] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState(null);
-  const [formData, setFormData] = useState({
-    nomorSurat: "",
-    tanggal: "",
-    perihal: "",
-    jenis: "",
-    kategori: "",
-    prioritas: "",
-    lemari: "",
-    rak: "",
-    ordner: "",
-    keterangan: "",
-  });
-
-  const navigate = (s, docId) => {
-    if (docId) {
-      const doc = DOCUMENTS.find((d) => d.id === docId);
-      if (doc) setSelectedDoc(doc);
-      setScreen("detail");
-    } else {
-      setScreen(s);
-      if (s === "dashboard") setSidebarActive("dashboard");
-      if (s === "archive") setSidebarActive("archive");
-      if (s === "upload") setSidebarActive("upload");
-      if (s === "users") setSidebarActive("users");
-    }
-  };
-
   return (
     <div style={{ fontFamily: "'Inter', sans-serif" }} className="size-full min-h-screen">
-      {screen === "landing" && <LandingPage onLogin={() => navigate("dashboard")} />}
-      {(screen === "dashboard" || screen === "archive" || screen === "detail" || screen === "upload" || screen === "users") && (
-        <AppShell
-          screen={screen}
-          sidebarActive={sidebarActive}
-          setSidebarActive={setSidebarActive}
-          onNavigate={navigate}
-        >
-          {screen === "dashboard" && <Dashboard onNavigate={navigate} />}
-          {screen === "archive" && <ArchivePage onViewDetail={(id) => navigate("detail", id)} />}
-          {screen === "detail" && <DetailPage doc={selectedDoc} onBack={() => navigate("archive")} />}
-          {screen === "upload" && (
-            <UploadPage
-              isDragging={isDragging}
-              setIsDragging={setIsDragging}
-              uploadedFile={uploadedFile}
-              setUploadedFile={setUploadedFile}
-              uploadStep={uploadStep}
-              setUploadStep={setUploadStep}
-              formData={formData}
-              setFormData={setFormData}
-            />
-          )}
-          {screen === "users" && <UserManagementPage />}
-        </AppShell>
-      )}
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <AppShell>
+                <Dashboard />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/arsip"
+          element={
+            <ProtectedRoute>
+              <AppShell>
+                <ArchivePage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/arsip/:id"
+          element={
+            <ProtectedRoute>
+              <AppShell>
+                <DetailPage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/upload"
+          element={
+            <ProtectedRoute>
+              <AppShell>
+                <UploadPage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/manajemen-pengguna"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AppShell>
+                <UserManagementPage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
     </div>
   );
 }
@@ -150,29 +162,34 @@ export default function App() {
 /* ─────────────────────────────────────────────
    FRAME 1 – LANDING PAGE
 ───────────────────────────────────────────── */
-function LandingPage({ onLogin }) {
+function LandingPage() {
+  const navigate = useNavigate();
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col relative">
+      {/* Background image */}
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: `url(${bgLandingHero})` }}
+      />
+      {/* Dark blue overlay for readability */}
+      <div className="absolute inset-0 bg-blue-900/60" />
+
       {/* Navbar */}
-      <nav className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-8 py-4">
+      <nav className="relative z-20 flex items-center justify-between px-6 md:px-10 py-4 bg-gradient-to-b from-black/40 to-transparent">
+        {/* Left: Pemkot Medan logo + E-ARSIP text */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur border border-white/30 flex items-center justify-center">
-            <Shield className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <div className="text-white font-bold text-sm leading-tight tracking-wide">E-ARSIP</div>
-            <div className="text-white/70 text-xs leading-tight">Substansi X · Pemko Medan</div>
-          </div>
+          <img src={logoPemkotMedan} alt="Logo Pemkot Medan" className="h-10 w-auto object-contain flex-shrink-0" />
+          <span className="text-white font-bold text-lg tracking-wide">E-ARSIP</span>
         </div>
-        <div className="flex items-center gap-6">
-          <a href="#" className="text-white/80 text-sm font-medium hover:text-white transition-colors flex items-center gap-1.5">
-            <Home className="w-3.5 h-3.5" /> Beranda
-          </a>
-          <a href="#" className="text-white/80 text-sm font-medium hover:text-white transition-colors flex items-center gap-1.5">
-            <BookOpen className="w-3.5 h-3.5" /> Panduan
-          </a>
+
+        {/* Right: BerAKHLAK + Medan Untuk Semua logos, Login button */}
+        <div className="flex items-center gap-4 md:gap-6">
+          <div className="hidden sm:flex items-center gap-4">
+            <img src={logoBerakhlak} alt="Logo BerAKHLAK" className="h-8 w-auto object-contain" />
+            <img src={logoMedanUntukSemua} alt="Logo Medan Untuk Semua" className="h-8 w-auto object-contain" />
+          </div>
           <button
-            onClick={onLogin}
+            onClick={() => navigate("/login")}
             className="bg-white text-[#1a56db] font-semibold text-sm px-5 py-2 rounded-md hover:bg-blue-50 transition-all shadow-lg flex items-center gap-2"
           >
             <LogIn className="w-4 h-4" /> Login
@@ -180,74 +197,37 @@ function LandingPage({ onLogin }) {
         </div>
       </nav>
 
-      {/* Hero */}
-      <div className="relative flex-1 min-h-screen flex items-center justify-center overflow-hidden">
-        {/* Background image */}
-        <div
-          className="absolute inset-0 bg-slate-800"
-          style={{
-            backgroundImage: `url('https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1600&h=900&fit=crop&auto=format')`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-          }}
-        />
-        {/* Blue gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0f1c2e]/85 via-[#1a3a6e]/75 to-[#1a56db]/60" />
-        {/* Subtle grid */}
-        <div
-          className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage: "linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)",
-            backgroundSize: "48px 48px",
-          }}
-        />
-
-        {/* Hero content */}
-        <div className="relative z-10 text-center max-w-2xl px-6">
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur border border-white/20 text-white/90 text-xs font-medium px-3 py-1.5 rounded-full mb-8 tracking-wider uppercase">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Sistem Resmi Pemerintah Kota Medan
-          </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-white leading-tight mb-4 tracking-tight">
-            Selamat Datang di<br />
-            <span className="text-[#60a5fa]">Aplikasi E-Arsip</span>
-          </h1>
-          <p className="text-white/70 text-base mb-10 leading-relaxed">
-            Platform pengelolaan arsip digital terintegrasi untuk mendukung tata kelola
-            pemerintahan yang transparan, efisien, dan akuntabel.
-          </p>
-          <div className="flex items-center justify-center gap-4">
-            <button
-              onClick={onLogin}
-              className="bg-[#1a56db] hover:bg-[#1d4ed8] text-white font-semibold px-8 py-3.5 rounded-md flex items-center gap-2.5 transition-all shadow-xl shadow-blue-900/40 text-sm"
-            >
-              <LogIn className="w-4 h-4" />
-              Login ke Sistem
-            </button>
-            <button className="border border-white/30 text-white/80 hover:bg-white/10 font-medium px-6 py-3.5 rounded-md text-sm transition-all">
-              Panduan Penggunaan
-            </button>
-          </div>
-
-          {/* Stats row */}
-          <div className="mt-14 grid grid-cols-3 gap-6 max-w-sm mx-auto">
-            {[
-              { v: "4,641", l: "Total Arsip" },
-              { v: "12", l: "Unit Kerja" },
-              { v: "99.9%", l: "Uptime Sistem" },
-            ].map((s) => (
-              <div key={s.l} className="text-center">
-                <div className="text-white font-bold text-xl">{s.v}</div>
-                <div className="text-white/50 text-xs mt-0.5">{s.l}</div>
-              </div>
-            ))}
-          </div>
+      {/* Hero content */}
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-6">
+        {/* Badge */}
+        <div className="bg-white/20 backdrop-blur-sm text-white rounded-full px-4 py-1 text-sm font-medium">
+          Portal Resmi Pemko Medan
         </div>
 
-        {/* Bottom fade */}
-        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#0f1c2e]/80 to-transparent" />
+        {/* Headline */}
+        <h1 className="text-4xl md:text-6xl font-extrabold text-white text-center mt-4 tracking-tight">
+          Selamat Datang di Aplikasi E-ARSIP
+        </h1>
+
+        {/* Subtitle */}
+        <p className="text-gray-200 text-lg md:text-xl text-center mt-4 max-w-2xl">
+          Sistem Informasi Kearsipan Elektronik Terintegrasi Pemerintah Kota Medan
+        </p>
+
+        {/* CTA */}
+        <button
+          onClick={() => navigate("/login")}
+          className="mt-10 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3.5 rounded-md flex items-center gap-2.5 transition-all shadow-xl shadow-blue-900/40 text-base"
+        >
+          Masuk ke Sistem
+          <ArrowRight className="w-5 h-5" />
+        </button>
       </div>
+
+      {/* Footer */}
+      <footer className="relative z-20 text-center text-white text-xs md:text-sm py-4">
+        © 2026 Bagian Organisasi Sekretariat Daerah Pemerintah Kota Medan
+      </footer>
     </div>
   );
 }
@@ -255,20 +235,17 @@ function LandingPage({ onLogin }) {
 /* ─────────────────────────────────────────────
    APP SHELL (Sidebar + Header)
 ───────────────────────────────────────────── */
-function AppShell({
-  screen,
-  children,
-  sidebarActive,
-  setSidebarActive,
-  onNavigate,
-}) {
-  const screenLabels = {
-    landing: "",
-    dashboard: "Dashboard",
-    archive: "Pencarian Lanjutan",
-    detail: "Detail Dokumen",
-    upload: "Upload Arsip",
-    users: "Manajemen Pengguna",
+function AppShell({ children }) {
+  const { user, logout } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pageLabel = getPageLabel(location.pathname);
+  const visibleNav = SIDEBAR_NAV.filter((item) => !item.adminOnly || user?.role === "admin");
+  const roleLabel = user?.role === "admin" ? "Administrator" : "Staf";
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
   };
 
   return (
@@ -278,9 +255,11 @@ function AppShell({
         {/* Logo */}
         <div className="px-5 py-5 border-b border-white/8">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-[#1a56db] flex items-center justify-center shadow-lg">
-              <Shield className="w-4.5 h-4.5 text-white" style={{ width: 18, height: 18 }} />
-            </div>
+            <img
+              src={logoPemkotMedan}
+              alt="Logo Pemkot Medan"
+              className="h-10 w-auto object-contain flex-shrink-0"
+            />
             <div>
               <div className="text-white font-bold text-sm">E-ARSIP</div>
               <div className="text-slate-400 text-xs">Substansi X</div>
@@ -291,13 +270,12 @@ function AppShell({
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           <div className="text-slate-500 text-[10px] font-semibold uppercase tracking-widest px-3 mb-2">Menu Utama</div>
-          {SIDEBAR_NAV.map(({ id, label, icon: Icon, adminOnly }) => {
-            const isActive = sidebarActive === id;
-            const targetScreen = id === "dashboard" ? "dashboard" : id === "archive" ? "archive" : id === "upload" ? "upload" : id === "users" ? "users" : "dashboard";
+          {visibleNav.map(({ path, label, icon: Icon, adminOnly }) => {
+            const isActive = location.pathname === path || location.pathname.startsWith(`${path}/`);
             return (
               <button
-                key={id}
-                onClick={() => { setSidebarActive(id); onNavigate(targetScreen); }}
+                key={path}
+                onClick={() => navigate(path)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
                   isActive
                     ? "bg-[#1a56db] text-white shadow-lg shadow-blue-900/30"
@@ -321,9 +299,16 @@ function AppShell({
               <User style={{ width: 14, height: 14, color: "#93c5fd" }} />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-slate-200 text-xs font-medium truncate">Dewi Anggraini</div>
-              <div className="text-slate-500 text-[10px]">Administrator</div>
+              <div className="text-slate-200 text-xs font-medium truncate">{user?.name ?? "Pengguna"}</div>
+              <div className="text-slate-500 text-[10px]">{roleLabel}</div>
             </div>
+            <button
+              onClick={handleLogout}
+              title="Keluar"
+              className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+            >
+              <LogOut style={{ width: 14, height: 14 }} />
+            </button>
           </div>
         </div>
       </aside>
@@ -332,10 +317,12 @@ function AppShell({
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top bar */}
         <header className="h-14 bg-white border-b border-[#e2e8f0] flex items-center justify-between px-6 flex-shrink-0">
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-3 text-sm">
+            <img src={logoBerakhlak} alt="Logo BerAKHLAK" className="h-8 w-auto object-contain flex-shrink-0" />
+            <div className="h-5 w-px bg-slate-200" />
             <span className="text-slate-400">E-Arsip</span>
             <span className="text-slate-300">/</span>
-            <span className="text-slate-700 font-semibold">{screenLabels[screen]}</span>
+            <span className="text-slate-700 font-semibold">{pageLabel}</span>
           </div>
           <div className="flex items-center gap-3">
             <button className="relative p-2 rounded-md hover:bg-slate-100 transition-colors">
@@ -347,7 +334,7 @@ function AppShell({
               <div className="w-7 h-7 rounded-full bg-[#1a56db]/10 flex items-center justify-center">
                 <User style={{ width: 13, height: 13, color: "#1a56db" }} />
               </div>
-              <span className="text-slate-700 text-sm font-medium">Dewi A.</span>
+              <span className="text-slate-700 text-sm font-medium">{user?.name ?? "Pengguna"}</span>
               <ChevronDown style={{ width: 13, height: 13, color: "#94a3b8" }} />
             </div>
           </div>
@@ -365,7 +352,9 @@ function AppShell({
 /* ─────────────────────────────────────────────
    FRAME 2 – DASHBOARD
 ───────────────────────────────────────────── */
-function Dashboard({ onNavigate }) {
+function Dashboard() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const total = ARCHIVE_DATA.reduce((s, d) => s + d.total, 0);
 
   return (
@@ -373,11 +362,11 @@ function Dashboard({ onNavigate }) {
       {/* Welcome row */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-xl font-bold text-[#0f1c2e]">Selamat Pagi, Dewi 👋</h2>
+          <h2 className="text-xl font-bold text-[#0f1c2e]">Selamat Pagi, {user?.name ?? "Pengguna"} 👋</h2>
           <p className="text-slate-500 text-sm mt-0.5">Minggu, 06 Juli 2025 · Sistem berjalan normal</p>
         </div>
         <button
-          onClick={() => onNavigate("upload")}
+          onClick={() => navigate("/upload")}
           className="flex items-center gap-2 bg-[#1a56db] text-white text-sm font-semibold px-4 py-2.5 rounded-md hover:bg-[#1d4ed8] transition-colors shadow-sm"
         >
           <FilePlus style={{ width: 15, height: 15 }} /> Upload Arsip
@@ -424,7 +413,7 @@ function Dashboard({ onNavigate }) {
           </div>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={ARCHIVE_DATA} barSize={32} margin={{ left: -10, right: 0, bottom: 0, top: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeWidth={1.5} strokeOpacity={0.8} vertical={false} />
               <XAxis dataKey="year" tick={{ fontSize: 12, fill: "#94a3b8", fontFamily: "Inter" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: "#94a3b8", fontFamily: "Inter" }} axisLine={false} tickLine={false} />
               <Tooltip
@@ -445,7 +434,7 @@ function Dashboard({ onNavigate }) {
               <div
                 key={doc.id}
                 className="flex items-start gap-3 p-3 rounded-lg hover:bg-[#f8fafc] cursor-pointer transition-colors group"
-                onClick={() => onNavigate("detail", doc.id)}
+                onClick={() => navigate(`/arsip/${doc.id}`)}
               >
                 <div className="w-7 h-7 rounded-md bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
                   <FileText style={{ width: 13, height: 13, color: "#1a56db" }} />
@@ -460,7 +449,7 @@ function Dashboard({ onNavigate }) {
             ))}
           </div>
           <button
-            onClick={() => onNavigate("archive")}
+            onClick={() => navigate("/arsip")}
             className="mt-4 w-full text-center text-xs text-[#1a56db] font-semibold hover:underline"
           >
             Lihat semua arsip →
@@ -474,7 +463,8 @@ function Dashboard({ onNavigate }) {
 /* ─────────────────────────────────────────────
    FRAME 3 – ARCHIVE / DATA GRID
 ───────────────────────────────────────────── */
-function ArchivePage({ onViewDetail }) {
+function ArchivePage() {
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [filterYear, setFilterYear] = useState("");
   const [filterCat, setFilterCat] = useState("");
@@ -588,14 +578,14 @@ function ArchivePage({ onViewDetail }) {
                     <div className="flex items-center gap-1.5">
                       <button
                         title="Preview"
-                        onClick={() => onViewDetail(doc.id)}
+                        onClick={() => navigate(`/arsip/${doc.id}`)}
                         className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-[#1a56db] transition-colors"
                       >
                         <Eye style={{ width: 14, height: 14 }} />
                       </button>
                       <button
                         title="Detail"
-                        onClick={() => onViewDetail(doc.id)}
+                        onClick={() => navigate(`/arsip/${doc.id}`)}
                         className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
                       >
                         <Info style={{ width: 14, height: 14 }} />
@@ -662,7 +652,27 @@ function ArchivePage({ onViewDetail }) {
 /* ─────────────────────────────────────────────
    FRAME 4 – DOCUMENT DETAIL / SPLIT VIEW
 ───────────────────────────────────────────── */
-function DetailPage({ doc, onBack }) {
+function DetailPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const doc = DOCUMENTS.find((d) => d.id === id);
+  const onBack = () => navigate("/arsip");
+
+  if (!doc) {
+    return (
+      <div className="p-10 text-center text-slate-400">
+        <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />
+        Dokumen tidak ditemukan.
+        <button
+          onClick={onBack}
+          className="block mx-auto mt-3 text-sm text-[#1a56db] font-semibold hover:underline"
+        >
+          Kembali ke daftar arsip
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* Sub-header */}
@@ -840,16 +850,22 @@ function DetailPage({ doc, onBack }) {
 /* ─────────────────────────────────────────────
    FRAME 5 – ADMIN UPLOAD FORM
 ───────────────────────────────────────────── */
-function UploadPage({
-  isDragging,
-  setIsDragging,
-  uploadedFile,
-  setUploadedFile,
-  uploadStep,
-  setUploadStep,
-  formData,
-  setFormData,
-}) {
+function UploadPage() {
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [uploadStep, setUploadStep] = useState(0);
+  const [formData, setFormData] = useState({
+    nomorSurat: "",
+    tanggal: "",
+    perihal: "",
+    jenis: "",
+    kategori: "",
+    prioritas: "",
+    lemari: "",
+    rak: "",
+    ordner: "",
+    keterangan: "",
+  });
   const update = (k, v) => setFormData({ ...formData, [k]: v });
   const [saved, setSaved] = useState(false);
 
