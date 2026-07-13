@@ -16,6 +16,7 @@ function userFromToken(token) {
     nip: decoded.nip,
     namaLengkap: decoded.namaLengkap,
     role: decoded.role,
+    lastLogin: decoded.lastLogin ?? null,
   };
 }
 
@@ -68,6 +69,7 @@ export function AuthProvider({ children }) {
           nip: data.user.nip,
           namaLengkap: data.user.namaLengkap,
           role: data.user.role,
+          lastLogin: data.user.lastLogin ?? null,
         }
       : userFromToken(data.access_token);
 

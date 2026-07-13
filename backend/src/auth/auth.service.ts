@@ -47,18 +47,28 @@ export class AuthService {
     password: string,
   ): Promise<{
     access_token: string;
-    user: { id: string; nip: string; namaLengkap: string; role: string };
+    user: {
+      id: string;
+      nip: string;
+      namaLengkap: string;
+      role: string;
+      lastLogin: string;
+    };
   }> {
     const user = await this.validateUser(nip, password);
     if (!user) {
       throw new UnauthorizedException('NIP atau password salah');
     }
 
+    const loginTimestamp = new Date();
+    await this.usersService.updateLastLogin(user.id, loginTimestamp);
+
     const payload: JwtPayload = {
       sub: user.id,
       nip: user.nip,
       namaLengkap: user.namaLengkap,
       role: user.role,
+      lastLogin: loginTimestamp.toISOString(),
     };
 
     return {
@@ -68,6 +78,7 @@ export class AuthService {
         nip: user.nip,
         namaLengkap: user.namaLengkap,
         role: user.role,
+        lastLogin: loginTimestamp.toISOString(),
       },
     };
   }

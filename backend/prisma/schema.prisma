@@ -17,6 +17,7 @@ model User {
   password    String
   role        String   @default("staf")
   isActive    Boolean  @default(true)
+  lastLogin   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

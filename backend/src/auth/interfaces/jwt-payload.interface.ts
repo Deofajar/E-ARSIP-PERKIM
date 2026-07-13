@@ -3,4 +3,5 @@ export interface JwtPayload {
   nip: string;
   namaLengkap: string;
   role: string;
+  lastLogin: string | null;
 }

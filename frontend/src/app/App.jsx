@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Routes, Route, useLocation, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
+import { Document, Page, pdfjs } from "react-pdf";
+import "react-pdf/dist/Page/AnnotationLayer.css";
+import "react-pdf/dist/Page/TextLayer.css";
 import Login from "./pages/Login.jsx";
 import { useAuth, API_BASE_URL, TOKEN_KEY } from "./context/AuthContext.jsx";
 import { ProtectedRoute } from "./components/ProtectedRoute.jsx";
@@ -8,6 +11,11 @@ import logoPemkotMedan from "../assets/logo-pemkot-medan.png";
 import logoBerakhlak from "../assets/logo-berakhlak.png";
 import logoMedanUntukSemua from "../assets/logo-medan-untuk-semua.png";
 import bgLandingHero from "../assets/bg-landing-hero.jpg";
+
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url,
+).toString();
 import {
   BarChart,
   Bar,
@@ -54,6 +62,9 @@ import {
   UserCheck,
   ShieldCheck,
   LogOut,
+  Settings,
+  Key,
+  HelpCircle,
 } from "lucide-react";
 
 const SIDEBAR_NAV = [
@@ -94,7 +105,38 @@ function formatTanggal(dateStr) {
   return new Date(dateStr).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function formatLastLogin(dateStr) {
+  if (!dateStr) return "Belum pernah login";
+  const date = new Date(dateStr);
+  const datePart = date.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${datePart}, ${hours}:${minutes}`;
+}
+
 const FILE_BASE_URL = API_BASE_URL.replace(/\/api\/v1$/, "");
+
+async function downloadArsip(doc) {
+  if (!doc.fileUrl) {
+    toast.error("Berkas tidak tersedia untuk diunduh.");
+    return;
+  }
+  try {
+    const response = await fetch(`${FILE_BASE_URL}${doc.fileUrl}`);
+    if (!response.ok) throw new Error("Gagal mengunduh berkas.");
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `${doc.nomorSurat}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(objectUrl);
+  } catch (error) {
+    toast.error(error.message);
+  }
+}
 
 export default function App() {
   return (
@@ -240,6 +282,23 @@ function AppShell({ children }) {
   const pageLabel = getPageLabel(location.pathname);
   const visibleNav = SIDEBAR_NAV.filter((item) => !item.adminOnly || user?.role === "admin");
   const roleLabel = user?.role === "admin" ? "Administrator" : "Staf";
+  const mockEmail = user?.namaLengkap
+    ? `${user.namaLengkap.toLowerCase().replace(/[^a-z0-9]+/g, ".")}@pemkomedan.go.id`
+    : "user@pemkomedan.go.id";
+
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    if (!isDropdownOpen) return;
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isDropdownOpen]);
 
   const handleLogout = () => {
     logout();
@@ -328,12 +387,99 @@ function AppShell({ children }) {
               <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
             </button>
             <div className="h-5 w-px bg-slate-200" />
-            <div className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 px-2 py-1.5 rounded-md transition-colors">
-              <div className="w-7 h-7 rounded-full bg-[#1a56db]/10 flex items-center justify-center">
-                <User style={{ width: 13, height: 13, color: "#1a56db" }} />
-              </div>
-              <span className="text-slate-700 text-sm font-medium">{user?.namaLengkap ?? "Memuat..."}</span>
-              <ChevronDown style={{ width: 13, height: 13, color: "#94a3b8" }} />
+            <div className="relative" ref={dropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsDropdownOpen((v) => !v)}
+                className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 px-2 py-1.5 rounded-md transition-colors"
+              >
+                <div className="w-7 h-7 rounded-full bg-[#1a56db]/10 flex items-center justify-center">
+                  <User style={{ width: 13, height: 13, color: "#1a56db" }} />
+                </div>
+                <span className="text-slate-700 text-sm font-medium">{user?.namaLengkap ?? "Memuat..."}</span>
+                <ChevronDown
+                  style={{ width: 13, height: 13, color: "#94a3b8" }}
+                  className={`transition-transform ${isDropdownOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              {isDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-gray-100 z-50 overflow-hidden">
+                  {/* Header section */}
+                  <div className="p-4 border-b border-gray-100 flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-[#1a56db]/10 flex items-center justify-center flex-shrink-0">
+                      <User style={{ width: 22, height: 22, color: "#1a56db" }} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-bold text-[#0f1c2e] truncate">{user?.namaLengkap ?? "Memuat..."}</div>
+                      <div className="text-xs text-slate-400 truncate">{mockEmail}</div>
+                      <span className="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+                        {roleLabel}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Info grid */}
+                  <div className="mx-4 mt-3 mb-1 grid grid-cols-2 gap-3 bg-gray-50 rounded-lg p-3">
+                    <div>
+                      <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">NIP</div>
+                      <div className="text-xs font-medium text-slate-700 mt-0.5" style={{ fontFamily: "'DM Mono', monospace" }}>
+                        {user?.nip ?? "-"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Unit</div>
+                      <div className="text-xs font-medium text-slate-700 mt-0.5">Sekretariat</div>
+                    </div>
+                  </div>
+
+                  {/* Menu items */}
+                  <div className="py-2">
+                    {[
+                      { icon: User, label: "Profil Saya", sub: "Lihat dan edit data profil" },
+                      { icon: Settings, label: "Pengaturan Akun", sub: "Preferensi & notifikasi" },
+                      { icon: Key, label: "Ganti Password", sub: "Perbarui kata sandi Anda" },
+                      { icon: HelpCircle, label: "Bantuan & Panduan", sub: "Dokumentasi penggunaan sistem" },
+                    ].map(({ icon: Icon, label, sub }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => setIsDropdownOpen(false)}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
+                      >
+                        <Icon style={{ width: 16, height: 16, color: "#64748b", flexShrink: 0 }} />
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-slate-700">{label}</div>
+                          <div className="text-[10px] text-slate-400">{sub}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Logout */}
+                  <div className="border-t border-gray-100 py-2">
+                    <button
+                      type="button"
+                      onClick={() => { setIsDropdownOpen(false); handleLogout(); }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-red-50 transition-colors text-left"
+                    >
+                      <LogOut style={{ width: 16, height: 16, color: "#dc2626", flexShrink: 0 }} />
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-red-600">Keluar dari Sistem</div>
+                        <div className="text-[10px] text-red-400">Sesi aktif akan diakhiri</div>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                    <span className="text-[10px] text-slate-400">
+                      Sesi aktif sejak {formatLastLogin(user?.lastLogin ?? new Date().toISOString())}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </header>
@@ -624,7 +770,8 @@ function ArchivePage() {
               {!isLoading && paged.map((doc, i) => (
                 <tr
                   key={doc.id}
-                  className={`hover:bg-[#f8fafc] transition-colors ${i < paged.length - 1 ? "border-b border-[#f4f6f9]" : ""}`}
+                  onClick={() => navigate(`/arsip/${doc.id}`)}
+                  className={`hover:bg-[#f8fafc] transition-colors cursor-pointer ${i < paged.length - 1 ? "border-b border-[#f4f6f9]" : ""}`}
                 >
                   <td className="px-4 py-3.5">
                     <span className="text-xs font-mono text-[#1a56db] font-semibold">{doc.nomorSurat}</span>
@@ -643,21 +790,25 @@ function ArchivePage() {
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-1.5">
                       <button
+                        type="button"
                         title="Preview"
-                        onClick={() => navigate(`/arsip/${doc.id}`)}
+                        onClick={(e) => { e.stopPropagation(); navigate(`/arsip/${doc.id}`); }}
                         className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-[#1a56db] transition-colors"
                       >
                         <Eye style={{ width: 14, height: 14 }} />
                       </button>
                       <button
+                        type="button"
                         title="Detail"
-                        onClick={() => navigate(`/arsip/${doc.id}`)}
+                        onClick={(e) => { e.stopPropagation(); navigate(`/arsip/${doc.id}`); }}
                         className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
                       >
                         <Info style={{ width: 14, height: 14 }} />
                       </button>
                       <button
+                        type="button"
                         title="Unduh"
+                        onClick={(e) => { e.stopPropagation(); downloadArsip(doc); }}
                         className="p-1.5 rounded hover:bg-green-50 text-slate-400 hover:text-green-600 transition-colors"
                       >
                         <Download style={{ width: 14, height: 14 }} />
@@ -723,6 +874,11 @@ function DetailPage() {
   const navigate = useNavigate();
   const [doc, setDoc] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [numPages, setNumPages] = useState(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pdfError, setPdfError] = useState(false);
+  const [viewerWidth, setViewerWidth] = useState(700);
+  const viewerRef = useRef(null);
   const onBack = () => navigate("/arsip");
 
   useEffect(() => {
@@ -736,6 +892,16 @@ function DetailPage() {
       .catch(() => setDoc(null))
       .finally(() => setIsLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (!viewerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width) setViewerWidth(Math.min(width - 32, 900));
+    });
+    observer.observe(viewerRef.current);
+    return () => observer.disconnect();
+  }, [doc]);
 
   if (isLoading) {
     return <div className="p-10 text-center text-slate-400 text-sm">Memuat dokumen...</div>;
@@ -785,26 +951,60 @@ function DetailPage() {
               <FileText style={{ width: 13, height: 13, color: "#60a5fa" }} />
               {doc.fileUrl?.split("/").pop() ?? "dokumen.pdf"}
             </span>
+            {numPages > 1 && (
+              <div className="flex items-center gap-2 mx-auto">
+                <button
+                  type="button"
+                  onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
+                  disabled={pageNumber <= 1}
+                  className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft style={{ width: 14, height: 14 }} />
+                </button>
+                <span className="text-slate-300 text-xs" style={{ fontFamily: "'DM Mono', monospace" }}>
+                  Halaman {pageNumber} / {numPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPageNumber((p) => Math.min(numPages, p + 1))}
+                  disabled={pageNumber >= numPages}
+                  className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronRight style={{ width: 14, height: 14 }} />
+                </button>
+              </div>
+            )}
             <div className="ml-auto flex items-center gap-2">
-              <a
-                href={fileUrl ?? undefined}
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
+                onClick={() => downloadArsip(doc)}
                 className="text-slate-400 hover:text-white text-xs px-2.5 py-1 rounded hover:bg-white/10 transition-colors flex items-center gap-1.5"
               >
                 <Download style={{ width: 12, height: 12 }} /> Unduh
-              </a>
+              </button>
             </div>
           </div>
 
-          {/* Real PDF viewer */}
-          <div className="flex-1 bg-slate-500">
-            {fileUrl ? (
-              <iframe src={fileUrl} title={doc.perihal} className="w-full h-full border-0" />
-            ) : (
-              <div className="flex items-center justify-center h-full text-slate-300 text-sm">
+          {/* Real PDF viewer (rendered client-side via pdf.js, independent of browser's native PDF plugin) */}
+          <div ref={viewerRef} className="flex-1 bg-slate-500 min-h-[500px] overflow-y-auto flex justify-center py-4">
+            {!fileUrl ? (
+              <div className="flex items-center justify-center h-full min-h-[500px] text-slate-300 text-sm">
                 Berkas tidak tersedia
               </div>
+            ) : pdfError ? (
+              <div className="flex flex-col items-center justify-center h-full min-h-[500px] text-slate-300 text-sm gap-2">
+                <AlertCircle className="w-8 h-8 opacity-50" />
+                Gagal memuat pratinjau PDF.
+              </div>
+            ) : (
+              <Document
+                file={fileUrl}
+                onLoadSuccess={({ numPages: n }) => { setNumPages(n); setPageNumber(1); setPdfError(false); }}
+                onLoadError={() => setPdfError(true)}
+                loading={<div className="flex items-center justify-center h-full min-h-[500px] text-slate-300 text-sm">Memuat pratinjau...</div>}
+              >
+                <Page pageNumber={pageNumber} width={viewerWidth} />
+              </Document>
             )}
           </div>
         </div>
@@ -867,14 +1067,13 @@ function DetailPage() {
 
           {/* Action buttons */}
           <div className="p-5 border-t border-[#f1f5f9] space-y-2">
-            <a
-              href={fileUrl ?? undefined}
-              target="_blank"
-              rel="noreferrer"
+            <button
+              type="button"
+              onClick={() => downloadArsip(doc)}
               className="w-full bg-[#1a56db] text-white text-sm font-semibold py-2.5 rounded-md hover:bg-[#1d4ed8] transition-colors flex items-center justify-center gap-2"
             >
               <Download style={{ width: 15, height: 15 }} /> Unduh Dokumen
-            </a>
+            </button>
           </div>
         </div>
       </div>
@@ -1230,6 +1429,7 @@ function UserManagementPage() {
   const emptyFormData = { namaLengkap: "", nip: "", password: "", role: "staf" };
   const [formData, setFormData] = useState(emptyFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const notify = (msg, type = "success") => {
     if (type === "danger") return toast.error(msg);
@@ -1313,10 +1513,29 @@ function UserManagementPage() {
     }
   };
 
-  const handleDelete = (id) => {
-    setUsers((prev) => prev.filter((u) => u.id !== id));
-    setDeleteTarget(null);
-    notify("Pengguna berhasil dihapus dari sistem.", "danger");
+  const handleDelete = async (id) => {
+    setIsDeleting(true);
+    try {
+      const token = localStorage.getItem(TOKEN_KEY);
+      const response = await fetch(`${API_BASE_URL}/users/${id}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const serverMessage = Array.isArray(body?.message) ? body.message[0] : body?.message;
+        throw new Error(serverMessage || "Gagal menghapus pengguna.");
+      }
+
+      setUsers((prev) => prev.filter((u) => u.id !== id));
+      setDeleteTarget(null);
+      notify("Pengguna berhasil dihapus dari sistem.", "danger");
+    } catch (error) {
+      notify(error.message, "danger");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -1474,9 +1693,9 @@ function UserManagementPage() {
 
                     {/* Login terakhir */}
                     <td className="px-5 py-4">
-                      <span className="text-xs text-slate-400 flex items-center gap-1">
+                      <span className={`text-xs flex items-center gap-1 whitespace-nowrap ${user.lastLogin ? "text-slate-500" : "text-slate-300 italic"}`}>
                         <Clock style={{ width: 11, height: 11 }} />
-                        -
+                        {formatLastLogin(user.lastLogin)}
                       </span>
                     </td>
 
@@ -1565,15 +1784,17 @@ function UserManagementPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setDeleteTarget(null)}
-                className="flex-1 border border-[#e2e8f0] text-slate-600 text-sm font-medium py-2.5 rounded-md hover:bg-slate-50 transition-colors"
+                disabled={isDeleting}
+                className="flex-1 border border-[#e2e8f0] text-slate-600 text-sm font-medium py-2.5 rounded-md hover:bg-slate-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Batal
               </button>
               <button
                 onClick={() => handleDelete(deleteTarget)}
-                className="flex-1 bg-red-600 text-white text-sm font-bold py-2.5 rounded-md hover:bg-red-700 transition-colors"
+                disabled={isDeleting}
+                className="flex-1 bg-red-600 text-white text-sm font-bold py-2.5 rounded-md hover:bg-red-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Ya, Hapus
+                {isDeleting ? "Menghapus..." : "Ya, Hapus"}
               </button>
             </div>
           </div>

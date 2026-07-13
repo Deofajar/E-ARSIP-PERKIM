@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateArsipDto } from './dto/create-arsip.dto';
@@ -8,18 +13,32 @@ export class ArsipService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateArsipDto, file: Express.Multer.File, uploaderId: string) {
-    return this.prisma.archive.create({
-      data: {
-        nomorSurat: dto.nomorSurat,
-        perihal: dto.perihal,
-        kategori: dto.kategori,
-        tanggalSurat: new Date(dto.tanggalSurat),
-        fileUrl: `/uploads/${file.filename}`,
-        storageLocation: dto.storageLocation ?? '-',
-        uploaderId,
-      },
-      include: { uploader: { select: { namaLengkap: true } } },
-    });
+    try {
+      return await this.prisma.archive.create({
+        data: {
+          nomorSurat: dto.nomorSurat,
+          perihal: dto.perihal,
+          kategori: dto.kategori,
+          tanggalSurat: new Date(dto.tanggalSurat),
+          fileUrl: `/uploads/${file.filename}`,
+          storageLocation: dto.storageLocation ?? '-',
+          uploaderId,
+        },
+        include: { uploader: { select: { namaLengkap: true } } },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Nomor surat sudah terdaftar. Silakan gunakan nomor surat yang berbeda.',
+        );
+      }
+      throw new InternalServerErrorException(
+        'Terjadi kesalahan pada server. Gagal menyimpan arsip.',
+      );
+    }
   }
 
   async findAll(search?: string) {
