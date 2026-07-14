@@ -1,3 +1,5 @@
+import { join } from 'path';
+import { existsSync } from 'fs';
 import {
   ConflictException,
   Injectable,
@@ -6,11 +8,15 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { UsersService } from '../users/users.service';
 import { CreateArsipDto } from './dto/create-arsip.dto';
 
 @Injectable()
 export class ArsipService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly usersService: UsersService,
+  ) {}
 
   async create(dto: CreateArsipDto, file: Express.Multer.File, uploaderId: string) {
     try {
@@ -70,5 +76,22 @@ export class ArsipService {
     }
 
     return archive;
+  }
+
+  async getDownloadPath(id: string, downloaderId: string): Promise<{ filePath: string; filename: string }> {
+    const archive = await this.findOne(id);
+    const filePath = join(__dirname, '..', '..', 'uploads', archive.fileUrl.replace('/uploads/', ''));
+
+    if (!existsSync(filePath)) {
+      throw new NotFoundException('Berkas tidak ditemukan di server');
+    }
+
+    await this.usersService.logActivity(
+      downloaderId,
+      'Mengunduh',
+      archive.nomorSurat,
+    );
+
+    return { filePath, filename: `${archive.nomorSurat}.pdf` };
   }
 }

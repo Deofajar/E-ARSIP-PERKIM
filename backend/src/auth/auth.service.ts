@@ -62,6 +62,7 @@ export class AuthService {
 
     const loginTimestamp = new Date();
     await this.usersService.updateLastLogin(user.id, loginTimestamp);
+    await this.usersService.logActivity(user.id, 'Login ke sistem');
 
     const payload: JwtPayload = {
       sub: user.id,

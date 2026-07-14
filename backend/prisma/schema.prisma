@@ -11,19 +11,36 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(uuid())
-  nip         String   @unique
+  id          String    @id @default(uuid())
+  nip         String    @unique
   namaLengkap String
   password    String
-  role        String   @default("staf")
-  isActive    Boolean  @default(true)
+  role        String    @default("staf")
+  isActive    Boolean   @default(true)
   lastLogin   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  email       String?
+  noTelepon   String?
+  unitKerja   String?
+  jabatan     String?
+  instansi    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  archives Archive[]
+  archives   Archive[]
+  activities UserActivity[]
 
   @@map("users")
+}
+
+model UserActivity {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@map("user_activities")
 }
 
 model Archive {

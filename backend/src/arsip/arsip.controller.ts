@@ -1,3 +1,4 @@
+import { createReadStream } from 'fs';
 import {
   BadRequestException,
   Body,
@@ -7,12 +8,14 @@ import {
   Post,
   Query,
   Req,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Request } from 'express';
+import { Request, type Response } from 'express';
 import { ArsipService } from './arsip.service';
 import { CreateArsipDto } from './dto/create-arsip.dto';
 import { arsipMulterOptions } from './multer.config';
@@ -27,6 +30,23 @@ export class ArsipController {
   @Get()
   findAll(@Query('search') search?: string) {
     return this.arsipService.findAll(search);
+  }
+
+  @Get(':id/download')
+  async download(
+    @Param('id') id: string,
+    @Req() req: Request & { user: JwtPayload },
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { filePath, filename } = await this.arsipService.getDownloadPath(
+      id,
+      req.user.sub,
+    );
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    return new StreamableFile(createReadStream(filePath));
   }
 
   @Get(':id')

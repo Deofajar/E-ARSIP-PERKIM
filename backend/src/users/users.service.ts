@@ -5,9 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
-import { Prisma, User } from '@prisma/client';
+import { Prisma, User, UserActivity } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 const SALT_ROUNDS = 10;
 
@@ -19,6 +20,10 @@ export class UsersService {
     return this.prisma.user.findUnique({ where: { nip } });
   }
 
+  async findById(id: string): Promise<User | null> {
+    return this.prisma.user.findUnique({ where: { id } });
+  }
+
   async findAll(): Promise<User[]> {
     return this.prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
   }
@@ -27,6 +32,40 @@ export class UsersService {
     await this.prisma.user.update({
       where: { id },
       data: { lastLogin: timestamp },
+    });
+  }
+
+  async updateProfile(id: string, dto: UpdateProfileDto): Promise<User> {
+    try {
+      return await this.prisma.user.update({ where: { id }, data: dto });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException('Pengguna tidak ditemukan');
+      }
+      throw new InternalServerErrorException(
+        'Terjadi kesalahan pada server. Gagal memperbarui profil.',
+      );
+    }
+  }
+
+  async logActivity(
+    userId: string,
+    action: string,
+    details?: string,
+  ): Promise<void> {
+    await this.prisma.userActivity.create({
+      data: { userId, action, details },
+    });
+  }
+
+  async findActivities(userId: string): Promise<UserActivity[]> {
+    return this.prisma.userActivity.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
     });
   }
 
