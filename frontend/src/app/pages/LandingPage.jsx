@@ -11,7 +11,6 @@ import {
   Bell,
   CheckCircle2,
   ChevronDown,
-  Newspaper,
   Mail,
   Phone,
 } from "lucide-react";
@@ -62,27 +61,6 @@ const LANGKAH = [
   { no: "02", title: "Unggah Dokumen", desc: "Unggah berkas PDF beserta metadata dan lokasi fisik arsip." },
   { no: "03", title: "Verifikasi & Simpan", desc: "Sistem memvalidasi kelengkapan data sebelum tersimpan permanen." },
   { no: "04", title: "Cari & Kelola", desc: "Telusuri, unduh, dan kelola arsip kapan pun dibutuhkan." },
-];
-
-const BERITA = [
-  {
-    kategori: "Pembaruan Sistem",
-    tanggal: "15 Jul 2026",
-    title: "Pembaruan Sistem E-Arsip Versi 2.4",
-    desc: "Peningkatan performa pencarian, notifikasi real-time, dan penyempurnaan tampilan detail dokumen kini telah tersedia.",
-  },
-  {
-    kategori: "Sosialisasi",
-    tanggal: "08 Jul 2026",
-    title: "Pelatihan Pengelolaan Arsip Digital bagi ASN",
-    desc: "Bagian Organisasi menyelenggarakan pelatihan penggunaan E-Arsip untuk seluruh unit kerja di lingkungan Pemko Medan.",
-  },
-  {
-    kategori: "Regulasi",
-    tanggal: "01 Jul 2026",
-    title: "Implementasi Permen PANRB No. 5/2025",
-    desc: "Penyesuaian tata kelola kearsipan elektronik mengikuti ketentuan terbaru tentang transformasi digital pemerintahan.",
-  },
 ];
 
 const REGULASI = [
@@ -395,48 +373,6 @@ export default function LandingPage() {
               Mulai Sekarang
               <ArrowRight className="w-5 h-5" />
             </button>
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════════════════════════
-          INFORMASI TERKINI
-      ═══════════════════════════════════════════ */}
-      <section className="bg-white py-20 px-6 md:px-10">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex items-end justify-between mb-10">
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0f1c2e] tracking-tight">
-              Informasi Terkini
-            </h2>
-            <button className="text-sm font-semibold text-[#1a56db] hover:underline whitespace-nowrap">
-              Lihat semua berita →
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {BERITA.map((b) => (
-              <article
-                key={b.title}
-                className="bg-white rounded-2xl border border-[#e2e8f0] shadow-sm hover:shadow-lg transition-shadow overflow-hidden flex flex-col"
-              >
-                <div className="h-40 bg-slate-200 flex items-center justify-center">
-                  <Newspaper className="w-10 h-10 text-slate-400" />
-                </div>
-                <div className="p-5 flex-1 flex flex-col">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-blue-50 text-[#1a56db] border border-blue-100">
-                      {b.kategori}
-                    </span>
-                    <span className="text-xs text-slate-400">{b.tanggal}</span>
-                  </div>
-                  <h3 className="text-base font-bold text-[#0f1c2e] leading-snug">{b.title}</h3>
-                  <p className="text-sm text-slate-500 mt-2 leading-relaxed flex-1">{b.desc}</p>
-                  <button className="text-sm font-semibold text-[#1a56db] hover:underline mt-4 text-left">
-                    Baca selengkapnya →
-                  </button>
-                </div>
-              </article>
-            ))}
           </div>
         </div>
       </section>
