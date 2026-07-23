@@ -7,6 +7,7 @@ import {
 import * as bcrypt from 'bcryptjs';
 import { Prisma, User, UserActivity } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
@@ -14,7 +15,10 @@ const SALT_ROUNDS = 10;
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async findByNip(nip: string): Promise<User | null> {
     return this.prisma.user.findUnique({ where: { nip } });
@@ -70,17 +74,9 @@ export class UsersService {
   }
 
   async remove(id: string): Promise<void> {
-    const archiveCount = await this.prisma.archive.count({
-      where: { uploaderId: id },
-    });
-    if (archiveCount > 0) {
-      throw new ConflictException(
-        'Tidak dapat menghapus pengguna karena masih memiliki arsip yang diunggah.',
-      );
-    }
-
+    let deletedUser: User;
     try {
-      await this.prisma.user.delete({ where: { id } });
+      deletedUser = await this.prisma.user.delete({ where: { id } });
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -92,6 +88,16 @@ export class UsersService {
         'Terjadi kesalahan pada server. Gagal menghapus pengguna.',
       );
     }
+
+    // Best-effort: a notification failure should never mask a successful deletion.
+    this.notificationsService
+      .create({
+        type: 'user_deleted',
+        title: 'Pengguna dihapus',
+        message: `Admin menghapus pengguna ${deletedUser.namaLengkap}`,
+        linkId: null,
+      })
+      .catch(() => undefined);
   }
 
   async create(createUserDto: CreateUserDto): Promise<User> {
@@ -105,7 +111,7 @@ export class UsersService {
       SALT_ROUNDS,
     );
 
-    return this.prisma.user.create({
+    const user = await this.prisma.user.create({
       data: {
         nip: createUserDto.nip,
         namaLengkap: createUserDto.namaLengkap,
@@ -113,5 +119,17 @@ export class UsersService {
         role: createUserDto.role ?? 'staf',
       },
     });
+
+    // Best-effort: a notification failure should never mask a successful user creation.
+    this.notificationsService
+      .create({
+        type: 'user',
+        title: 'Pengguna baru ditambahkan',
+        message: `Admin menambahkan pengguna ${user.namaLengkap}`,
+        linkId: null,
+      })
+      .catch(() => undefined);
+
+    return user;
   }
 }

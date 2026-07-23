@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
+import { toast } from "sonner";
 import {
   LayoutDashboard,
   Search,
@@ -12,9 +13,13 @@ import {
   Settings,
   Key,
   HelpCircle,
+  FileText,
+  AlertTriangle,
+  UserPlus,
+  UserMinus,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { formatLastLogin } from "../../utils/helpers.js";
+import { authFetch, formatLastLogin, formatRelativeTime } from "../../utils/helpers.js";
 import logoPemkotMedan from "../../../assets/logo-pemkot-medan.png";
 import logoBerakhlak from "../../../assets/logo-berakhlak.png";
 
@@ -34,6 +39,13 @@ function getPageLabel(pathname) {
   if (pathname === "/profil") return "Profil Saya";
   return "";
 }
+
+const NOTIF_ICON_MAP = {
+  upload: { icon: FileText, color: "#1a56db", bg: "#dbeafe" },
+  warning: { icon: AlertTriangle, color: "#d97706", bg: "#fef3c7" },
+  user: { icon: UserPlus, color: "#16a34a", bg: "#dcfce7" },
+  user_deleted: { icon: UserMinus, color: "#dc2626", bg: "#fee2e2" },
+};
 
 export function AppShell({ children }) {
   const { user, logout } = useAuth();
@@ -60,6 +72,51 @@ export function AppShell({ children }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isDropdownOpen]);
 
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const notifRef = useRef(null);
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  useEffect(() => {
+    if (!isNotifOpen) return;
+    const handleClickOutside = (e) => {
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setIsNotifOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isNotifOpen]);
+
+  useEffect(() => {
+    const fetchNotifications = () => {
+      authFetch("/notifications")
+        .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Gagal memuat notifikasi"))))
+        .then((data) => setNotifications(data))
+        .catch((error) => toast.error(error.message));
+    };
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const markAllNotifsRead = async () => {
+    try {
+      const response = await authFetch("/notifications/read-all", { method: "PATCH" });
+      if (!response.ok) throw new Error("Gagal memperbarui notifikasi");
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleNotifClick = (item) => {
+    setIsNotifOpen(false);
+    if (item.type === "upload" && item.linkId) {
+      navigate(`/arsip/${item.linkId}`);
+    }
+  };
+
   const handleLogout = () => {
     logout();
     navigate("/login");
@@ -79,7 +136,9 @@ export function AppShell({ children }) {
             />
             <div>
               <div className="text-white font-bold text-sm">E-ARSIP</div>
-              <div className="text-slate-400 text-xs">Substansi X</div>
+              <div className="text-[9px] leading-snug text-slate-400 mt-0.5 max-w-[150px] whitespace-normal">
+                Dinas Perumahan, Kawasan Permukiman, Cipta Karya dan Tata Ruang
+              </div>
             </div>
           </div>
         </div>
@@ -142,10 +201,72 @@ export function AppShell({ children }) {
             <span className="text-slate-700 font-semibold">{pageLabel}</span>
           </div>
           <div className="flex items-center gap-3">
-            <button className="relative p-2 rounded-md hover:bg-slate-100 transition-colors">
-              <Bell style={{ width: 18, height: 18, color: "#64748b" }} />
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
-            </button>
+            <div className="relative" ref={notifRef}>
+              <button
+                type="button"
+                onClick={() => setIsNotifOpen((v) => !v)}
+                className="relative p-2 rounded-md hover:bg-slate-100 transition-colors"
+              >
+                <Bell style={{ width: 18, height: 18, color: "#64748b" }} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {isNotifOpen && (
+                <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden">
+                  {/* Header */}
+                  <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-[#0f1c2e]">Notifikasi</h3>
+                      {unreadCount > 0 && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-600">
+                          {unreadCount} baru
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={markAllNotifsRead}
+                      className="text-xs font-medium text-[#1a56db] hover:underline"
+                    >
+                      Tandai semua dibaca
+                    </button>
+                  </div>
+
+                  {/* List */}
+                  <div className="max-h-96 overflow-y-auto">
+                    {notifications.length === 0 && (
+                      <div className="text-xs text-slate-400 text-center py-10">Belum ada notifikasi</div>
+                    )}
+                    {notifications.map((n) => {
+                      const { icon: Icon, color, bg } = NOTIF_ICON_MAP[n.type];
+                      return (
+                        <div
+                          key={n.id}
+                          onClick={() => handleNotifClick(n)}
+                          className="relative flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer border-b border-gray-50 last:border-b-0"
+                        >
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: bg }}>
+                            <Icon style={{ width: 15, height: 15, color }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-bold text-[#0f1c2e]">{n.title}</div>
+                            <div className="text-gray-500 text-xs mt-0.5">{n.message}</div>
+                            <div className="text-gray-400 text-[10px] mt-1">{formatRelativeTime(n.createdAt)}</div>
+                          </div>
+                          {!n.isRead && (
+                            <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-blue-600" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="h-5 w-px bg-slate-200" />
             <div className="relative" ref={dropdownRef}>
               <button

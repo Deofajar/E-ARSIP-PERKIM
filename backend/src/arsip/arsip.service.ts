@@ -9,6 +9,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateArsipDto } from './dto/create-arsip.dto';
 
 @Injectable()
@@ -16,11 +17,17 @@ export class ArsipService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly usersService: UsersService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
-  async create(dto: CreateArsipDto, file: Express.Multer.File, uploaderId: string) {
+  async create(
+    dto: CreateArsipDto,
+    file: Express.Multer.File,
+    uploaderId: string,
+    uploaderNama: string,
+  ) {
     try {
-      return await this.prisma.archive.create({
+      const archive = await this.prisma.archive.create({
         data: {
           nomorSurat: dto.nomorSurat,
           perihal: dto.perihal,
@@ -29,9 +36,22 @@ export class ArsipService {
           fileUrl: `/uploads/${file.filename}`,
           storageLocation: dto.storageLocation ?? '-',
           uploaderId,
+          uploaderNama,
         },
         include: { uploader: { select: { namaLengkap: true } } },
       });
+
+      // Best-effort: a notification failure should never mask a successful upload.
+      this.notificationsService
+        .create({
+          type: 'upload',
+          title: 'Arsip baru diunggah',
+          message: `${archive.uploaderNama} mengunggah ${archive.nomorSurat}`,
+          linkId: archive.id,
+        })
+        .catch(() => undefined);
+
+      return archive;
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&

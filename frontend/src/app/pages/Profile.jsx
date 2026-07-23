@@ -164,7 +164,7 @@ export default function Profile() {
   const displayPhone = isEditing ? formData.noTelepon : profile?.noTelepon || "0812-3456-7890";
   const displayUnit = isEditing ? formData.unitKerja : profile?.unitKerja || "Sekretariat";
   const displayJabatan = isEditing ? formData.jabatan : profile?.jabatan || defaultJabatan;
-  const displayInstansi = isEditing ? formData.instansi : profile?.instansi || "Dinas Substansi X, Pemko Medan";
+  const displayInstansi = isEditing ? formData.instansi : profile?.instansi || "Dinas Perumahan, Kawasan Permukiman, Cipta Karya dan Tata Ruang, Pemko Medan";
 
   return (
     <div className="p-7 max-w-3xl mx-auto space-y-5">

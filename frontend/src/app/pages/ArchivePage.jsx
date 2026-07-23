@@ -153,7 +153,7 @@ export default function ArchivePage() {
                     <span className="text-xs font-mono text-slate-500">{new Date(doc.tanggalSurat).getFullYear()}</span>
                   </td>
                   <td className="px-4 py-3.5 text-xs text-slate-500 whitespace-nowrap">{formatTanggal(doc.tanggalSurat)}</td>
-                  <td className="px-4 py-3.5 text-xs text-slate-600 whitespace-nowrap">{doc.uploader?.namaLengkap ?? "-"}</td>
+                  <td className="px-4 py-3.5 text-xs text-slate-600 whitespace-nowrap">{doc.uploaderNama ?? doc.uploader?.namaLengkap ?? "-"}</td>
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-1.5">
                       <button

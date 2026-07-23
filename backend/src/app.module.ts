@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { ArsipModule } from './arsip/arsip.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ArsipModule } from './arsip/arsip.module';
     UsersModule,
     AuthModule,
     ArsipModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

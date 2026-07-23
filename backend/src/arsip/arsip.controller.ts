@@ -64,6 +64,11 @@ export class ArsipController {
     if (!file) {
       throw new BadRequestException('File dokumen wajib diunggah');
     }
-    return this.arsipService.create(createArsipDto, file, req.user.sub);
+    return this.arsipService.create(
+      createArsipDto,
+      file,
+      req.user.sub,
+      req.user.namaLengkap,
+    );
   }
 }

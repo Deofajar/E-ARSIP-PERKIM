@@ -34,6 +34,18 @@ export function formatLastLogin(dateStr) {
   return `${datePart}, ${hours}:${minutes}`;
 }
 
+export function formatRelativeTime(dateStr) {
+  if (!dateStr) return "-";
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "Baru saja";
+  if (diffMin < 60) return `${diffMin} menit lalu`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} jam lalu`;
+  const diffDay = Math.floor(diffHour / 24);
+  return `${diffDay} hari lalu`;
+}
+
 export async function downloadArsip(doc) {
   if (!doc.fileUrl) {
     toast.error("Berkas tidak tersedia untuk diunduh.");

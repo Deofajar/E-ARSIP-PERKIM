@@ -186,7 +186,7 @@ export default function DetailPage() {
                 { label: "Perihal", value: doc.perihal, icon: FileText, mono: false },
                 { label: "Kategori", value: doc.kategori, icon: FolderOpen, mono: false },
                 { label: "Tahun Arsip", value: String(new Date(doc.tanggalSurat).getFullYear()), icon: Clock, mono: true },
-                { label: "Diunggah oleh", value: doc.uploader?.namaLengkap ?? "-", icon: User, mono: false },
+                { label: "Diunggah oleh", value: doc.uploaderNama ?? doc.uploader?.namaLengkap ?? "-", icon: User, mono: false },
               ].map((f) => (
                 <div key={f.label}>
                   <div className="flex items-center gap-1.5 mb-1">
